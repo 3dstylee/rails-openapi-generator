@@ -62,7 +62,12 @@ module RailsOpenapiGenerator
     end
 
     def build_endpoint(route)
-      file             = locate_source(route)
+      file = locate_source(route)
+      if @configuration.source_excluded?(file)
+        @report.skip(route, "controller source excluded by exclude_source_paths")
+        return nil
+      end
+
       action_source    = file && @parser.parse(file)[route.action]
       action_node      = action_source&.method_node
       controller_class = @locator.controller_class(route)
