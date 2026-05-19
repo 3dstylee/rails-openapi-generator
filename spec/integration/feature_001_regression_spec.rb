@@ -66,4 +66,9 @@ RSpec.describe "Feature 001 output is unchanged by response bodies", :rails_app 
     per_page = index["parameters"].find { |param| param["name"] == "per_page" }
     expect(per_page["schema"]).to include("type" => "integer", "minimum" => 1, "maximum" => 100)
   end
+
+  it "excludes no endpoint when exclude_source_paths is unset (FR-006)" do
+    # The default empty exclude_source_paths leaves every controller documented.
+    expect(document["paths"]).to have_key("/api/posts")
+  end
 end

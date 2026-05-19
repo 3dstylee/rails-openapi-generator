@@ -3,6 +3,22 @@
 All notable changes to this gem are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-05-19
+
+### Added
+
+- New `exclude_source_paths` configuration setting — a list of strings
+  (substring match) and/or regexps. Any endpoint whose resolved controller
+  source file path matches an entry is omitted from the generated document and
+  recorded as skipped in the run report. Useful for dropping vendored or
+  third-party controllers. It complements `route_filter` (which filters by
+  route); both apply.
+
+### Changed (additive)
+
+- With `exclude_source_paths` unset (the default empty list), output is
+  unchanged — the feature is opt-in.
+
 ## [0.6.0] - 2026-05-19
 
 ### Added

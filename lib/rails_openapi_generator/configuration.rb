@@ -7,7 +7,8 @@ module RailsOpenapiGenerator
     SUPPORTED_FORMATS = %i[json yaml].freeze
     DEFAULT_METHOD_RESOLUTION_DEPTH = 5
 
-    attr_accessor :output_path, :title, :api_version, :route_filter, :method_resolution_depth
+    attr_accessor :output_path, :title, :api_version, :route_filter, :method_resolution_depth,
+                  :exclude_source_paths
     attr_writer :format
 
     def initialize
@@ -17,6 +18,17 @@ module RailsOpenapiGenerator
       @route_filter = nil
       @format       = nil
       @method_resolution_depth = DEFAULT_METHOD_RESOLUTION_DEPTH
+      @exclude_source_paths = []
+    end
+
+    # True when `path` matches any `exclude_source_paths` entry — a String entry
+    # by substring, a Regexp entry by pattern. False for a nil path.
+    def source_excluded?(path)
+      return false if path.nil?
+
+      Array(exclude_source_paths).any? do |pattern|
+        pattern.is_a?(Regexp) ? pattern.match?(path) : path.include?(pattern.to_s)
+      end
     end
 
     # The serialization format, inferred from the output path extension when not set explicitly.
@@ -40,6 +52,12 @@ module RailsOpenapiGenerator
       unless method_resolution_depth.is_a?(Integer) && method_resolution_depth >= 1
         raise ConfigurationError,
               "method_resolution_depth must be an integer >= 1, got #{method_resolution_depth.inspect}"
+      end
+
+      unless exclude_source_paths.is_a?(Array) &&
+             exclude_source_paths.all? { |entry| entry.is_a?(String) || entry.is_a?(Regexp) }
+        raise ConfigurationError,
+              "exclude_source_paths must be an array of strings or regexps, got #{exclude_source_paths.inspect}"
       end
 
       self

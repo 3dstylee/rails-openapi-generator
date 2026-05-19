@@ -51,6 +51,22 @@ end
 | `title` | host application name | Document `info.title`. |
 | `api_version` | `"1.0.0"` | Document `info.version`. |
 | `route_filter` | include all | A callable `(Route) -> Boolean` selecting routes. |
+| `exclude_source_paths` | `[]` | Strings/regexps; endpoints whose controller source file path matches are excluded. |
+| `method_resolution_depth` | `5` | How deep wrapper/helper method chains are followed. |
+
+`route_filter` filters by route; `exclude_source_paths` filters by **where the
+controller is defined** — handy for dropping vendored or third-party controllers:
+
+```ruby
+RailsOpenapiGenerator.configure do |config|
+  config.exclude_source_paths = ["vendor/", %r{app/controllers/legacy/}]
+end
+```
+
+A string entry matches as a substring of the controller's source file path; a
+regexp entry matches the path. Excluded endpoints are listed in the run report's
+`Skipped:` section. Both filters apply — an endpoint is excluded if either drops
+it.
 
 ## Documenting endpoints
 
