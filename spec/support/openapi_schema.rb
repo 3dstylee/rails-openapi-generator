@@ -53,7 +53,24 @@ module OpenapiSchema
                 }
               },
               "requestBody" => { "type" => "object" },
-              "responses" => { "type" => "object" }
+              "responses" => {
+                "type" => "object",
+                "minProperties" => 1,
+                "additionalProperties" => {
+                  "type" => "object",
+                  "required" => %w[description],
+                  "properties" => {
+                    "description" => { "type" => "string" },
+                    "content" => {
+                      "type" => "object",
+                      "additionalProperties" => {
+                        "type" => "object",
+                        "properties" => { "schema" => { "type" => "object" } }
+                      }
+                    }
+                  }
+                }
+              }
             }
           }
         }

@@ -9,7 +9,7 @@ RSpec.describe RailsOpenapiGenerator::YardParser do
 
   it "exposes an ActionSource for each controller action" do
     actions = parser.parse(controller_file)
-    expect(actions.keys).to contain_exactly("index", "show", "create")
+    expect(actions.keys).to contain_exactly("index", "show", "create", "destroy")
   end
 
   it "captures the YARD docstring for a documented action" do

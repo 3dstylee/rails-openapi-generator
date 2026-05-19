@@ -2,8 +2,21 @@
 
 Rails.application.routes.draw do
   namespace :api do
-    resources :users, only: %i[index show create]
+    resources :users, only: %i[index show create destroy]
     resources :posts, only: %i[index]
+    resources :pages, only: %i[show] do
+      get :download, on: :member
+    end
+    get "reports/single", to: "reports#single"
+    get "reports/chained", to: "reports#chained"
+    get "reports/via_concern", to: "reports#via_concern"
+    get "reports/cyclic", to: "reports#cyclic"
+    post "statuses/mark", to: "statuses#mark"
+    put "statuses/unmark", to: "statuses#unmark"
+    post "statuses/make", to: "statuses#make"
+    post "statuses/guarded", to: "statuses#guarded"
+    post "inputs/upload", to: "inputs#upload"
+    resources :inputs, only: %i[show create]
   end
 
   # A redirect route has no backing controller action — exercises the skip path.

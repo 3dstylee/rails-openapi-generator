@@ -7,6 +7,7 @@ module RailsOpenapiGenerator
   # The fully assembled description of one operation.
   Endpoint = Struct.new(
     :http_method, :path, :summary, :description, :parameters, :request_body, :operation_id, :tag,
+    :response,
     keyword_init: true
   )
 
@@ -18,35 +19,56 @@ module RailsOpenapiGenerator
       @schema_mapper = schema_mapper
     end
 
-    # Returns an {Endpoint}. `doc_comment`, `param_calls`, and `source_location`
-    # are optional so the builder also produces a minimal operation when only
-    # the route is known.
-    def build(route, doc_comment: nil, param_calls: [], source_location: nil)
+    # Returns an {Endpoint}. `doc_comment`, `param_calls`, `source_location`,
+    # `response`, and `implicit_params` are optional so the builder also
+    # produces a minimal operation when only the route is known.
+    def build(route, doc_comment: nil, param_calls: [], source_location: nil, response: nil, implicit_params: [])
       param_calls ||= []
+      response ||= Response.new(status: 200, undeterminable: true)
+      implicit = implicit_param_names(route, param_calls, implicit_params)
       Endpoint.new(
         http_method: route.http_method,
         path: route.path,
         summary: doc_comment&.summary,
-        description: build_description(doc_comment&.description, source_location),
-        parameters: build_parameters(route, param_calls),
-        request_body: build_request_body(route, param_calls),
+        description: build_description(doc_comment&.description, source_location, response),
+        parameters: build_parameters(route, param_calls, implicit),
+        request_body: build_request_body(route, param_calls, implicit),
         operation_id: operation_id(route),
-        tag: route.controller_class_name
+        tag: route.controller_class_name,
+        response: response
       )
     end
 
     private
 
-    # Combines the YARD description (if any) with a reference to the action's
-    # source file and line, so readers can jump straight to the implementation.
-    def build_description(text, source_location)
+    # Combines the YARD description (if any) with a note about an HTML page /
+    # file download, and a reference to the action's source file and line.
+    def build_description(text, source_location, response)
       parts = []
       parts << text if text && !text.empty?
+      parts << page_note(response) if page_note(response)
       parts << "_Source: `#{source_location}`_" if source_location
       parts.empty? ? nil : parts.join("\n\n")
     end
 
-    def build_parameters(route, param_calls)
+    def page_note(response)
+      case response&.kind
+      when :html_page
+        reference = response.page_reference
+        reference ? "_Renders an HTML page (`#{reference}`)._" : "_Renders an HTML page._"
+      when :file_download
+        "_Sends a file download._"
+      end
+    end
+
+    # Implicit (`params`-derived) parameter names not already covered by a path
+    # segment or a `param!` declaration.
+    def implicit_param_names(route, param_calls, implicit_params)
+      known = route.path_params + param_calls.filter_map(&:name)
+      Array(implicit_params).reject { |name| known.include?(name) }
+    end
+
+    def build_parameters(route, param_calls, implicit)
       by_name = param_calls.each_with_object({}) { |call, map| map[call.name] = call if call.name }
       parameters = []
 
@@ -62,16 +84,19 @@ module RailsOpenapiGenerator
             name: call.name, location: :query, required: call.required, schema: @schema_mapper.map(call)
           )
         end
+        implicit.each do |name|
+          parameters << Parameter.new(name: name, location: :query, required: false, schema: {})
+        end
       end
 
       parameters
     end
 
-    def build_request_body(route, param_calls)
+    def build_request_body(route, param_calls, implicit)
       return nil unless body_method?(route)
 
       body_calls = non_path_calls(route, param_calls)
-      return nil if body_calls.empty?
+      return nil if body_calls.empty? && implicit.empty?
 
       properties = {}
       required   = []
@@ -79,10 +104,15 @@ module RailsOpenapiGenerator
         properties[call.name] = @schema_mapper.map(call)
         required << call.name if call.required
       end
+      implicit.each { |name| properties[name] ||= {} }
 
-      schema = { "type" => "object", "properties" => properties }
+      schema = { "type" => "object", "properties" => sort_properties(properties) }
       schema["required"] = required unless required.empty?
       { "content" => { "application/json" => { "schema" => schema } } }
+    end
+
+    def sort_properties(properties)
+      properties.sort.to_h
     end
 
     def non_path_calls(route, param_calls)

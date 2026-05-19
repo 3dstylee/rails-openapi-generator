@@ -75,6 +75,12 @@ end
   and constraints. For `GET`/`DELETE` these are query parameters; for
   `POST`/`PUT`/`PATCH` they form a JSON request body. Dynamic route segments
   (`:id`) become path parameters.
+- Parameters used **implicitly** — `params[:key]`, `params.require`,
+  `params.permit`, `params.fetch`, `params.dig` — are detected too, in the
+  action and recursively in the helper methods it calls. They are documented
+  with a permissive ("any") schema. A key already declared via `param!` or as a
+  path parameter keeps its richer definition; Rails-internal keys
+  (`controller`, `action`, `format`) are skipped.
 
 Every operation is also **tagged with its controller class name** (e.g.
 `Api::UsersController`), and the document lists those tags at the top level.
@@ -84,6 +90,87 @@ per-controller sections in the sidebar — no extra setup required.
 Each operation's **description ends with a reference to the source file and
 line** of the action (e.g. `Source: app/controllers/api/users_controller.rb:12`),
 so readers can jump straight from the docs to the implementation.
+
+## Response bodies
+
+Each operation's success response carries a body schema, derived by static
+inspection of two sources:
+
+- **jbuilder view templates** — the `.json.jbuilder` the action renders, located
+  by Rails view conventions (`app/views/<controller>/<action>.json.jbuilder`).
+  `json.array!` becomes an array schema, `json.partial!` is followed, nested
+  `json.x do … end` blocks become nested objects.
+- **literal `render json:`** — an inline `render json: { … }` with literal
+  values. A literal render takes precedence over a view template.
+
+Field **names and nesting** are always recovered. Field **types** are
+best-effort: typed when read from a literal, permissive (`{}`, meaning "any")
+when read from a jbuilder value expression such as `json.name user.name`.
+
+Each operation's success response is filed under the status code the action
+**explicitly sets** — read from `head :symbol` / `head <integer>` calls and the
+`status:` option of `render` calls (e.g. `head :ok` → 200,
+`render json: x, status: :created` → 201). A `head` response is documented with
+no body. When an action sets no explicit status, the HTTP-method convention
+applies:
+
+| Endpoint kind | Convention status |
+|---------------|-------------------|
+| Reads / updates (GET, PUT, PATCH) | 200 |
+| Creation (POST) | 201 |
+| Deletion (DELETE) | 204 (no body) |
+
+Only happy-path (2xx/3xx) statuses are read; an error-status guard
+(`render status: :unprocessable_entity`) does not affect the documented success
+status.
+
+Endpoints whose response shape cannot be determined (non-literal `render json:`,
+serializer-based responses, unlocatable partials) still get a valid success
+response with no body schema, and are named in the run report. No controller
+action is executed — everything is read statically. Error responses (4xx/5xx)
+are out of scope.
+
+## HTML pages & file downloads
+
+Not every route serves JSON. The generator classifies each action and marks the
+ones that don't:
+
+- **HTML page** — an action that renders an HTML view (explicitly via
+  `render template:`/`render :action`/`render html:`, or implicitly when its
+  only view is a `.html.*` file). Its success response is `text/html`, it gains
+  an `"HTML Pages"` tag and an `x-renders-html` extension, and its description
+  notes the template.
+- **File download** — an action that calls `send_file` / `send_data`. Its
+  success response is `application/octet-stream`, it gains a `"File Downloads"`
+  tag and an `x-sends-file` extension.
+
+A `render json:` always wins — a JSON endpoint is never marked as a page or
+download, and JSON-endpoint output is unchanged. Redoc/Swagger UI show "HTML
+Pages" and "File Downloads" as their own sidebar sections, and the run report
+counts both.
+
+File-download detection also resolves **wrapper methods**: if an action streams
+a file through a helper (e.g. `send_file_and_cleanup`) instead of calling
+`send_file`/`send_data` directly, the generator follows that helper to its
+definition — in the controller, an included concern, or a parent controller —
+and through chains of wrappers, until it finds the download call. Resolution is
+static, cycle-guarded, and bounded by `download_resolution_depth` (default 5):
+
+```ruby
+RailsOpenapiGenerator.configure do |config|
+  config.download_resolution_depth = 5 # how deep wrapper chains are followed
+end
+```
+
+```text
+  Processed:      626 endpoints
+  HTML pages:     128 endpoints
+  File downloads: 6 endpoints
+```
+
+The `x-renders-html` / `x-sends-file` flags make non-JSON endpoints easy to
+filter out of the document with a post-processing step if you want a pure JSON
+API spec.
 
 ## Generating the document
 

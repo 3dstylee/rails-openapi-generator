@@ -12,7 +12,8 @@ RSpec.describe RailsOpenapiGenerator::DocumentBuilder do
     RailsOpenapiGenerator::Endpoint.new(
       {
         http_method: http_method, path: path, summary: nil, description: nil,
-        parameters: [], request_body: nil, operation_id: "#{http_method.downcase}_op"
+        parameters: [], request_body: nil, operation_id: "#{http_method.downcase}_op",
+        response: RailsOpenapiGenerator::Response.new(status: 200)
       }.merge(attrs)
     )
   end

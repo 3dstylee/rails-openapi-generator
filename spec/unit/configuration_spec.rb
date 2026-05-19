@@ -55,5 +55,25 @@ RSpec.describe RailsOpenapiGenerator::Configuration do
       configuration.output_path = "  "
       expect { configuration.validate! }.to raise_error(RailsOpenapiGenerator::ConfigurationError, /output_path/)
     end
+
+    it "raises ConfigurationError for a non-positive method_resolution_depth" do
+      configuration.output_path = "tmp/spec/openapi.json"
+      configuration.method_resolution_depth = 0
+      expect { configuration.validate! }
+        .to raise_error(RailsOpenapiGenerator::ConfigurationError, /method_resolution_depth/)
+    end
+
+    it "raises ConfigurationError for a non-integer method_resolution_depth" do
+      configuration.output_path = "tmp/spec/openapi.json"
+      configuration.method_resolution_depth = "deep"
+      expect { configuration.validate! }
+        .to raise_error(RailsOpenapiGenerator::ConfigurationError, /method_resolution_depth/)
+    end
+  end
+
+  describe "#method_resolution_depth" do
+    it "defaults to 5" do
+      expect(configuration.method_resolution_depth).to eq(5)
+    end
   end
 end

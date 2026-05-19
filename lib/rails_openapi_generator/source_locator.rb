@@ -15,6 +15,13 @@ module RailsOpenapiGenerator
       location && File.exist?(location) ? location : nil
     end
 
+    # Returns the resolved controller Class for a route, or nil. Used by wrapper
+    # resolution, which needs the live class for Ruby method lookup.
+    def controller_class(route)
+      class_name = route.controller_class_name
+      class_name && constantize(class_name)
+    end
+
     private
 
     def constantize(class_name)
