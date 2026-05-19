@@ -5,9 +5,9 @@ module RailsOpenapiGenerator
   class Configuration
     DEFAULT_OUTPUT_PATH = "doc/openapi.json"
     SUPPORTED_FORMATS = %i[json yaml].freeze
-    DEFAULT_DOWNLOAD_RESOLUTION_DEPTH = 5
+    DEFAULT_METHOD_RESOLUTION_DEPTH = 5
 
-    attr_accessor :output_path, :title, :api_version, :route_filter, :download_resolution_depth
+    attr_accessor :output_path, :title, :api_version, :route_filter, :method_resolution_depth
     attr_writer :format
 
     def initialize
@@ -16,7 +16,7 @@ module RailsOpenapiGenerator
       @api_version  = "1.0.0"
       @route_filter = nil
       @format       = nil
-      @download_resolution_depth = DEFAULT_DOWNLOAD_RESOLUTION_DEPTH
+      @method_resolution_depth = DEFAULT_METHOD_RESOLUTION_DEPTH
     end
 
     # The serialization format, inferred from the output path extension when not set explicitly.
@@ -37,9 +37,9 @@ module RailsOpenapiGenerator
               "output_path directory is not writable: #{File.dirname(File.expand_path(output_path))}"
       end
 
-      unless download_resolution_depth.is_a?(Integer) && download_resolution_depth >= 1
+      unless method_resolution_depth.is_a?(Integer) && method_resolution_depth >= 1
         raise ConfigurationError,
-              "download_resolution_depth must be an integer >= 1, got #{download_resolution_depth.inspect}"
+              "method_resolution_depth must be an integer >= 1, got #{method_resolution_depth.inspect}"
       end
 
       self

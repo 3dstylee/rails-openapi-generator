@@ -20,18 +20,19 @@ module RailsOpenapiGenerator
     end
 
     # Returns an {Endpoint}. `doc_comment`, `param_calls`, `source_location`,
-    # and `response` are optional so the builder also produces a minimal
-    # operation when only the route is known.
-    def build(route, doc_comment: nil, param_calls: [], source_location: nil, response: nil)
+    # `response`, and `implicit_params` are optional so the builder also
+    # produces a minimal operation when only the route is known.
+    def build(route, doc_comment: nil, param_calls: [], source_location: nil, response: nil, implicit_params: [])
       param_calls ||= []
       response ||= Response.new(status: 200, undeterminable: true)
+      implicit = implicit_param_names(route, param_calls, implicit_params)
       Endpoint.new(
         http_method: route.http_method,
         path: route.path,
         summary: doc_comment&.summary,
         description: build_description(doc_comment&.description, source_location, response),
-        parameters: build_parameters(route, param_calls),
-        request_body: build_request_body(route, param_calls),
+        parameters: build_parameters(route, param_calls, implicit),
+        request_body: build_request_body(route, param_calls, implicit),
         operation_id: operation_id(route),
         tag: route.controller_class_name,
         response: response
@@ -60,7 +61,14 @@ module RailsOpenapiGenerator
       end
     end
 
-    def build_parameters(route, param_calls)
+    # Implicit (`params`-derived) parameter names not already covered by a path
+    # segment or a `param!` declaration.
+    def implicit_param_names(route, param_calls, implicit_params)
+      known = route.path_params + param_calls.filter_map(&:name)
+      Array(implicit_params).reject { |name| known.include?(name) }
+    end
+
+    def build_parameters(route, param_calls, implicit)
       by_name = param_calls.each_with_object({}) { |call, map| map[call.name] = call if call.name }
       parameters = []
 
@@ -76,16 +84,19 @@ module RailsOpenapiGenerator
             name: call.name, location: :query, required: call.required, schema: @schema_mapper.map(call)
           )
         end
+        implicit.each do |name|
+          parameters << Parameter.new(name: name, location: :query, required: false, schema: {})
+        end
       end
 
       parameters
     end
 
-    def build_request_body(route, param_calls)
+    def build_request_body(route, param_calls, implicit)
       return nil unless body_method?(route)
 
       body_calls = non_path_calls(route, param_calls)
-      return nil if body_calls.empty?
+      return nil if body_calls.empty? && implicit.empty?
 
       properties = {}
       required   = []
@@ -93,10 +104,15 @@ module RailsOpenapiGenerator
         properties[call.name] = @schema_mapper.map(call)
         required << call.name if call.required
       end
+      implicit.each { |name| properties[name] ||= {} }
 
-      schema = { "type" => "object", "properties" => properties }
+      schema = { "type" => "object", "properties" => sort_properties(properties) }
       schema["required"] = required unless required.empty?
       { "content" => { "application/json" => { "schema" => schema } } }
+    end
+
+    def sort_properties(properties)
+      properties.sort.to_h
     end
 
     def non_path_calls(route, param_calls)

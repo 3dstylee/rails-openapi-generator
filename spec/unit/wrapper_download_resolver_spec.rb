@@ -13,7 +13,10 @@ RSpec.describe RailsOpenapiGenerator::WrapperDownloadResolver, :rails_app do
   end
 
   def resolver(max_depth: 5)
-    described_class.new(method_resolver: RailsOpenapiGenerator::MethodResolver.new, max_depth: max_depth)
+    walker = RailsOpenapiGenerator::ControllerMethodWalker.new(
+      method_resolver: RailsOpenapiGenerator::MethodResolver.new, max_depth: max_depth
+    )
+    described_class.new(walker: walker)
   end
 
   describe "single-level resolution (US1)" do

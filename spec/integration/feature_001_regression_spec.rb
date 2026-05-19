@@ -60,4 +60,10 @@ RSpec.describe "Feature 001 output is unchanged by response bodies", :rails_app 
     expect(body["type"]).to eq("array")
     expect(index["tags"]).to eq(["Api::UsersController"])
   end
+
+  it "leaves rails_param-derived parameters unchanged when implicit-params detection is added (FR-010)" do
+    # The typed/constrained per_page parameter from `param!` is preserved as-is.
+    per_page = index["parameters"].find { |param| param["name"] == "per_page" }
+    expect(per_page["schema"]).to include("type" => "integer", "minimum" => 1, "maximum" => 100)
+  end
 end

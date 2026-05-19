@@ -3,6 +3,27 @@
 All notable changes to this gem are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-05-19
+
+### Added
+
+- Request parameters used **implicitly** via the `params` object are now
+  detected and documented — `params[:key]`, `params.require`, `params.permit`,
+  `params.fetch`, `params.dig` — in the action body and, recursively, in the
+  receiverless helper methods it calls. Discovered parameters are documented
+  with a permissive ("any") schema.
+- A key already documented via `rails_param` `param!` or as a path parameter
+  keeps its definition; Rails-internal keys (`controller`, `action`, `format`)
+  are never documented.
+
+### Changed
+
+- **Configuration**: `download_resolution_depth` is renamed to
+  `method_resolution_depth` — it now bounds both wrapper-download resolution
+  and implicit-params helper scanning. Same default (5).
+- Operations gain newly discovered implicit parameters — additive; path
+  parameters and `param!`-derived parameters are unchanged.
+
 ## [0.5.0] - 2026-05-19
 
 ### Added

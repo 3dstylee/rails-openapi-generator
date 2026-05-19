@@ -75,6 +75,12 @@ end
   and constraints. For `GET`/`DELETE` these are query parameters; for
   `POST`/`PUT`/`PATCH` they form a JSON request body. Dynamic route segments
   (`:id`) become path parameters.
+- Parameters used **implicitly** — `params[:key]`, `params.require`,
+  `params.permit`, `params.fetch`, `params.dig` — are detected too, in the
+  action and recursively in the helper methods it calls. They are documented
+  with a permissive ("any") schema. A key already declared via `param!` or as a
+  path parameter keeps its richer definition; Rails-internal keys
+  (`controller`, `action`, `format`) are skipped.
 
 Every operation is also **tagged with its controller class name** (e.g.
 `Api::UsersController`), and the document lists those tags at the top level.

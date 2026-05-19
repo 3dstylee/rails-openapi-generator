@@ -40,9 +40,11 @@ module RailsOpenapiGenerator
       @view_locator     = ViewLocator.new(views_root: views_root)
       @jbuilder_parser  = JbuilderParser.new(views_root: views_root)
       @method_resolver  = MethodResolver.new(yard_parser: @parser)
-      @wrapper_resolver = WrapperDownloadResolver.new(
-        method_resolver: @method_resolver, max_depth: @configuration.download_resolution_depth
+      @walker           = ControllerMethodWalker.new(
+        method_resolver: @method_resolver, max_depth: @configuration.method_resolution_depth
       )
+      @wrapper_resolver = WrapperDownloadResolver.new(walker: @walker)
+      @implicit_scanner = ImplicitParamScanner.new(walker: @walker)
       @classifier       = RenderClassifier.new(view_locator: @view_locator, wrapper_resolver: @wrapper_resolver)
       @response_builder = ResponseBuilder.new
       @operation_builder = OperationBuilder.new
@@ -60,19 +62,22 @@ module RailsOpenapiGenerator
     end
 
     def build_endpoint(route)
-      file          = locate_source(route)
-      action_source = file && @parser.parse(file)[route.action]
-      param_calls   = @param_extractor.extract(action_source)
+      file             = locate_source(route)
+      action_source    = file && @parser.parse(file)[route.action]
+      action_node      = action_source&.method_node
+      controller_class = @locator.controller_class(route)
+      param_calls      = @param_extractor.extract(action_source)
       warn_unresolved(route, param_calls)
 
-      response = build_response(route, action_source)
+      response = build_response(route, action_source, controller_class)
       count_kind(response)
       endpoint = @operation_builder.build(
         route,
         doc_comment: @doc_extractor.extract(action_source),
         param_calls: param_calls,
         source_location: source_location_for(file, action_source),
-        response: response
+        response: response,
+        implicit_params: @implicit_scanner.scan(controller_class, action_node)
       )
       @report.processed_count += 1
       endpoint
@@ -82,11 +87,11 @@ module RailsOpenapiGenerator
       @operation_builder.build(route)
     end
 
-    def build_response(route, action_source)
+    def build_response(route, action_source, controller_class)
       render_result  = @render_extractor.extract(action_source)
       classification = @classifier.classify(
         route, render_result,
-        controller_class: @locator.controller_class(route),
+        controller_class: controller_class,
         action_node: action_source&.method_node
       )
       view_schema    = classification.jbuilder_file ? @jbuilder_parser.parse(classification.jbuilder_file) : nil

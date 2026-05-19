@@ -15,6 +15,8 @@ Rails.application.routes.draw do
     put "statuses/unmark", to: "statuses#unmark"
     post "statuses/make", to: "statuses#make"
     post "statuses/guarded", to: "statuses#guarded"
+    post "inputs/upload", to: "inputs#upload"
+    resources :inputs, only: %i[show create]
   end
 
   # A redirect route has no backing controller action — exercises the skip path.
