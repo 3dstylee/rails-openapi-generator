@@ -7,20 +7,26 @@ module Api
     def index
       param! :query, String, blank: false
       param! :per_page, Integer, in: 1..100
-      render json: []
     end
 
     # Show a user
     def show
       param! :id, Integer, required: true
-      render json: {}
     end
 
     def create
       param! :name, String, required: true
       param! :email, String, required: true, format: /.+@.+/
       param! :role, String, in: %w[admin member]
-      render json: {}
+      return render status: :unprocessable_entity, json: { error: "invalid" } unless params[:name]
+
+      render json: { id: 1, role: "member", active: true }
+    end
+
+    # Delete a user
+    def destroy
+      param! :id, Integer, required: true
+      head :no_content
     end
   end
 end

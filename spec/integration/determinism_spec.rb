@@ -14,4 +14,43 @@ RSpec.describe "Deterministic output", :rails_app do
   ensure
     FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
   end
+
+  it "orders response body schema properties deterministically (FR-010)" do
+    schemas = Array.new(2) do
+      config = RailsOpenapiGenerator::Configuration.new
+      config.output_path = File.expand_path("../../tmp/spec/det_response.json", __dir__)
+      document = RailsOpenapiGenerator::Generator.new(config).document
+      document.dig("paths", "/api/users/{id}", "get", "responses", "200",
+                   "content", "application/json", "schema", "properties").keys
+    end
+
+    expect(schemas[0]).to eq(schemas[1])
+    expect(schemas[0]).to eq(schemas[0].sort)
+  ensure
+    FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
+  end
+
+  it "produces stable non-JSON marks (content type, tags, extensions) across runs (FR-012)" do
+    operations = Array.new(2) do
+      config = RailsOpenapiGenerator::Configuration.new
+      config.output_path = File.expand_path("../../tmp/spec/det_html.json", __dir__)
+      RailsOpenapiGenerator::Generator.new(config).document["paths"]["/api/pages/{id}"]["get"]
+    end
+
+    expect(operations[0]).to eq(operations[1])
+  ensure
+    FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
+  end
+
+  it "produces a stable wrapper-resolved download operation across runs (FR-011)" do
+    operations = Array.new(2) do
+      config = RailsOpenapiGenerator::Configuration.new
+      config.output_path = File.expand_path("../../tmp/spec/det_wrapper.json", __dir__)
+      RailsOpenapiGenerator::Generator.new(config).document["paths"]["/api/reports/chained"]["get"]
+    end
+
+    expect(operations[0]).to eq(operations[1])
+  ensure
+    FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
+  end
 end

@@ -6,6 +6,7 @@ module RailsOpenapiGenerator
     OPENAPI_VERSION = "3.1.0"
     METHOD_ORDER    = %w[get post put patch delete].freeze
     LOCATION_ORDER  = { path: 0, query: 1, body: 2 }.freeze
+    KIND_TAGS       = { html_page: "HTML Pages", file_download: "File Downloads" }.freeze
 
     def initialize(configuration)
       @configuration = configuration
@@ -25,9 +26,21 @@ module RailsOpenapiGenerator
 
     private
 
-    # One OpenAPI tag per controller, so viewers group operations by controller.
+    # One OpenAPI tag per controller, plus the "HTML Pages" / "File Downloads"
+    # kind tags, so viewers group operations meaningfully.
     def tags(endpoints)
-      endpoints.filter_map(&:tag).uniq.sort.map { |name| { "name" => name } }
+      names = endpoints.flat_map { |endpoint| operation_tags(endpoint) }
+      names.uniq.sort.map { |name| { "name" => name } }
+    end
+
+    # The tags for one operation: its controller tag plus, for a non-JSON
+    # endpoint, the kind tag ("HTML Pages" / "File Downloads").
+    def operation_tags(endpoint)
+      tags = []
+      tags << endpoint.tag if endpoint.tag
+      kind_tag = KIND_TAGS[endpoint.response&.kind]
+      tags << kind_tag if kind_tag
+      tags
     end
 
     def info
@@ -69,15 +82,51 @@ module RailsOpenapiGenerator
 
     def operation(endpoint)
       result = { "operationId" => endpoint.operation_id }
-      result["tags"]        = [endpoint.tag] if endpoint.tag
+      tags = operation_tags(endpoint)
+      result["tags"]        = tags unless tags.empty?
       result["summary"]     = endpoint.summary if endpoint.summary
       result["description"] = endpoint.description if endpoint.description
+      result.merge!(kind_extensions(endpoint.response))
 
       parameters = endpoint.parameters.reject { |param| param.location == :body }
       result["parameters"]  = sorted_parameters(parameters) unless parameters.empty?
       result["requestBody"] = endpoint.request_body if endpoint.request_body
-      result["responses"]   = { "200" => { "description" => "Successful response" } }
+      result["responses"]   = responses(endpoint.response)
       result
+    end
+
+    # Machine-readable vendor extensions marking a non-JSON endpoint.
+    def kind_extensions(response)
+      case response&.kind
+      when :html_page
+        extensions = { "x-renders-html" => true }
+        extensions["x-html-template"] = response.page_reference if response.page_reference
+        extensions
+      when :file_download
+        { "x-sends-file" => true }
+      else
+        {}
+      end
+    end
+
+    # Builds the OpenAPI `responses` object from the endpoint's success response.
+    def responses(response)
+      entry = { "description" => response.description }
+      content = response_content(response)
+      entry["content"] = content if content
+      { response.status.to_s => entry }
+    end
+
+    # The response content type and schema, by response kind.
+    def response_content(response)
+      case response.kind
+      when :html_page
+        { "text/html" => { "schema" => { "type" => "string" } } }
+      when :file_download
+        { "application/octet-stream" => { "schema" => { "type" => "string", "format" => "binary" } } }
+      else
+        response.body ? { "application/json" => { "schema" => response.body } } : nil
+      end
     end
 
     def sorted_parameters(parameters)

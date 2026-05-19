@@ -33,6 +33,6 @@ RSpec.describe "Operation titles and descriptions from YARD comments", :rails_ap
 
     expect(operation).not_to have_key("summary")
     expect(operation["description"]).to match(%r{Source: `app/controllers/api/users_controller\.rb:\d+`})
-    expect(operation["responses"]).to have_key("200")
+    expect(operation["responses"]).to have_key("201")
   end
 end

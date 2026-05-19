@@ -1,0 +1,55 @@
+# frozen_string_literal: true
+
+# Verifies the response-bodies feature is purely additive: the routes,
+# parameters, tags, summaries, descriptions, and source references produced by
+# feature 001 are unchanged (spec FR-012).
+RSpec.describe "Feature 001 output is unchanged by response bodies", :rails_app do
+  let(:document) do
+    config = RailsOpenapiGenerator::Configuration.new
+    config.output_path = File.expand_path("../../tmp/spec/regression.json", __dir__)
+    RailsOpenapiGenerator::Generator.new(config).document
+  end
+
+  let(:index) { document["paths"]["/api/users"]["get"] }
+
+  it "still discovers every route" do
+    expect(document["paths"].keys).to include("/api/users", "/api/users/{id}", "/api/posts", "/api/orphan")
+  end
+
+  it "still derives request parameters from rails_param" do
+    per_page = index["parameters"].find { |param| param["name"] == "per_page" }
+    expect(per_page["schema"]).to include("type" => "integer", "minimum" => 1, "maximum" => 100)
+  end
+
+  it "still tags operations by controller class name" do
+    expect(index["tags"]).to eq(["Api::UsersController"])
+  end
+
+  it "still derives summaries and descriptions from YARD comments" do
+    expect(index["summary"]).to eq("Search users")
+    expect(index["description"]).to include("Returns the users matching the given filters")
+  end
+
+  it "still appends the source file and line to the description" do
+    expect(index["description"]).to match(%r{Source: `app/controllers/api/users_controller\.rb:\d+`})
+  end
+
+  it "still gives every operation a unique path-based operationId" do
+    ids = document["paths"].values.flat_map { |operations| operations.values.map { |op| op["operationId"] } }
+    expect(ids).to eq(ids.uniq)
+  end
+
+  it "leaves JSON endpoints unmarked by the HTML/download feature (FR-013)" do
+    expect(index["responses"].values.first["content"].keys).to eq(["application/json"])
+    expect(index["tags"]).to eq(["Api::UsersController"])
+    expect(index).not_to have_key("x-renders-html")
+    expect(index).not_to have_key("x-sends-file")
+  end
+
+  it "leaves a genuinely undeterminable endpoint undeterminable after wrapper resolution (FR-010)" do
+    # `posts#index` has no view, no render, and no download wrapper.
+    operation = document["paths"]["/api/posts"]["get"]
+    expect(operation).not_to have_key("x-sends-file")
+    expect(operation["responses"].values.first).not_to have_key("content")
+  end
+end

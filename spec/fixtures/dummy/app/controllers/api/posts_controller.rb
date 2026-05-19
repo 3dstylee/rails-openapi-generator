@@ -3,8 +3,9 @@
 module Api
   class PostsController < ApplicationController
     # List posts
-    def index
-      render json: []
-    end
+    #
+    # This action has neither a jbuilder view nor a literal render, so its
+    # response shape is undeterminable by the generator.
+    def index; end
   end
 end

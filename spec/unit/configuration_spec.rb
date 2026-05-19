@@ -55,5 +55,25 @@ RSpec.describe RailsOpenapiGenerator::Configuration do
       configuration.output_path = "  "
       expect { configuration.validate! }.to raise_error(RailsOpenapiGenerator::ConfigurationError, /output_path/)
     end
+
+    it "raises ConfigurationError for a non-positive download_resolution_depth" do
+      configuration.output_path = "tmp/spec/openapi.json"
+      configuration.download_resolution_depth = 0
+      expect { configuration.validate! }
+        .to raise_error(RailsOpenapiGenerator::ConfigurationError, /download_resolution_depth/)
+    end
+
+    it "raises ConfigurationError for a non-integer download_resolution_depth" do
+      configuration.output_path = "tmp/spec/openapi.json"
+      configuration.download_resolution_depth = "deep"
+      expect { configuration.validate! }
+        .to raise_error(RailsOpenapiGenerator::ConfigurationError, /download_resolution_depth/)
+    end
+  end
+
+  describe "#download_resolution_depth" do
+    it "defaults to 5" do
+      expect(configuration.download_resolution_depth).to eq(5)
+    end
   end
 end

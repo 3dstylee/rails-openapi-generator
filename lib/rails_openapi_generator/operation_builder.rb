@@ -7,6 +7,7 @@ module RailsOpenapiGenerator
   # The fully assembled description of one operation.
   Endpoint = Struct.new(
     :http_method, :path, :summary, :description, :parameters, :request_body, :operation_id, :tag,
+    :response,
     keyword_init: true
   )
 
@@ -18,32 +19,45 @@ module RailsOpenapiGenerator
       @schema_mapper = schema_mapper
     end
 
-    # Returns an {Endpoint}. `doc_comment`, `param_calls`, and `source_location`
-    # are optional so the builder also produces a minimal operation when only
-    # the route is known.
-    def build(route, doc_comment: nil, param_calls: [], source_location: nil)
+    # Returns an {Endpoint}. `doc_comment`, `param_calls`, `source_location`,
+    # and `response` are optional so the builder also produces a minimal
+    # operation when only the route is known.
+    def build(route, doc_comment: nil, param_calls: [], source_location: nil, response: nil)
       param_calls ||= []
+      response ||= Response.new(status: 200, undeterminable: true)
       Endpoint.new(
         http_method: route.http_method,
         path: route.path,
         summary: doc_comment&.summary,
-        description: build_description(doc_comment&.description, source_location),
+        description: build_description(doc_comment&.description, source_location, response),
         parameters: build_parameters(route, param_calls),
         request_body: build_request_body(route, param_calls),
         operation_id: operation_id(route),
-        tag: route.controller_class_name
+        tag: route.controller_class_name,
+        response: response
       )
     end
 
     private
 
-    # Combines the YARD description (if any) with a reference to the action's
-    # source file and line, so readers can jump straight to the implementation.
-    def build_description(text, source_location)
+    # Combines the YARD description (if any) with a note about an HTML page /
+    # file download, and a reference to the action's source file and line.
+    def build_description(text, source_location, response)
       parts = []
       parts << text if text && !text.empty?
+      parts << page_note(response) if page_note(response)
       parts << "_Source: `#{source_location}`_" if source_location
       parts.empty? ? nil : parts.join("\n\n")
+    end
+
+    def page_note(response)
+      case response&.kind
+      when :html_page
+        reference = response.page_reference
+        reference ? "_Renders an HTML page (`#{reference}`)._" : "_Renders an HTML page._"
+      when :file_download
+        "_Sends a file download._"
+      end
     end
 
     def build_parameters(route, param_calls)

@@ -25,20 +25,27 @@ module RailsOpenapiGenerator
 
     def build_document
       @report = GenerationReport.new
-      endpoints = collect_endpoints
+      setup_pipeline
+      endpoints = routes_to_process.filter_map { |route| build_endpoint(route) }
       DocumentBuilder.new(@configuration).build(endpoints)
     end
 
-    def collect_endpoints
-      locator         = SourceLocator.new
-      parser          = YardParser.new
-      param_extractor = ParamExtractor.new
-      doc_extractor   = DocCommentExtractor.new
-      operation_builder = OperationBuilder.new
-
-      routes_to_process.filter_map do |route|
-        build_endpoint(route, locator, parser, param_extractor, doc_extractor, operation_builder)
-      end
+    def setup_pipeline
+      views_root = views_root_path
+      @locator          = SourceLocator.new
+      @parser           = YardParser.new
+      @param_extractor  = ParamExtractor.new
+      @doc_extractor    = DocCommentExtractor.new
+      @render_extractor = RenderExtractor.new
+      @view_locator     = ViewLocator.new(views_root: views_root)
+      @jbuilder_parser  = JbuilderParser.new(views_root: views_root)
+      @method_resolver  = MethodResolver.new(yard_parser: @parser)
+      @wrapper_resolver = WrapperDownloadResolver.new(
+        method_resolver: @method_resolver, max_depth: @configuration.download_resolution_depth
+      )
+      @classifier       = RenderClassifier.new(view_locator: @view_locator, wrapper_resolver: @wrapper_resolver)
+      @response_builder = ResponseBuilder.new
+      @operation_builder = OperationBuilder.new
     end
 
     def routes_to_process
@@ -52,31 +59,62 @@ module RailsOpenapiGenerator
       end
     end
 
-    def build_endpoint(route, locator, parser, param_extractor, doc_extractor, operation_builder)
-      file          = locate_source(route, locator)
-      action_source = file && parser.parse(file)[route.action]
-      param_calls   = param_extractor.extract(action_source)
+    def build_endpoint(route)
+      file          = locate_source(route)
+      action_source = file && @parser.parse(file)[route.action]
+      param_calls   = @param_extractor.extract(action_source)
       warn_unresolved(route, param_calls)
-      doc_comment = doc_extractor.extract(action_source)
 
-      endpoint = operation_builder.build(
+      response = build_response(route, action_source)
+      count_kind(response)
+      endpoint = @operation_builder.build(
         route,
-        doc_comment: doc_comment,
+        doc_comment: @doc_extractor.extract(action_source),
         param_calls: param_calls,
-        source_location: source_location_for(file, action_source)
+        source_location: source_location_for(file, action_source),
+        response: response
       )
       @report.processed_count += 1
       endpoint
     rescue StandardError => e
       @report.warn("#{route.http_method} #{route.path}: #{e.message}")
       @report.processed_count += 1
-      operation_builder.build(route)
+      @operation_builder.build(route)
     end
 
-    def locate_source(route, locator)
-      file = locator.locate(route)
+    def build_response(route, action_source)
+      render_result  = @render_extractor.extract(action_source)
+      classification = @classifier.classify(
+        route, render_result,
+        controller_class: @locator.controller_class(route),
+        action_node: action_source&.method_node
+      )
+      view_schema    = classification.jbuilder_file ? @jbuilder_parser.parse(classification.jbuilder_file) : nil
+      response       = @response_builder.build(route, classification: classification, view_schema: view_schema)
+
+      if response.undeterminable?
+        @report.warn("#{route.http_method} #{route.path}: response shape could not be determined")
+      end
+      response
+    end
+
+    def count_kind(response)
+      @report.html_page_count += 1 if response.kind == :html_page
+      @report.file_download_count += 1 if response.kind == :file_download
+    end
+
+    def locate_source(route)
+      file = @locator.locate(route)
       @report.warn("#{route.http_method} #{route.path}: controller source not found") if file.nil?
       file
+    end
+
+    def views_root_path
+      return nil unless defined?(Rails) && Rails.respond_to?(:root) && Rails.root
+
+      File.join(Rails.root.to_s, "app", "views")
+    rescue StandardError
+      nil
     end
 
     # A "path:line" reference (relative to the Rails root) to the action's source.

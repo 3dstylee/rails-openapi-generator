@@ -14,7 +14,7 @@ Gem::Specification.new do |spec|
   spec.required_ruby_version = ">= 3.1"
   spec.metadata = { "rubygems_mfa_required" => "true" }
 
-  spec.files = Dir["lib/**/*", "exe/*", "README.md"]
+  spec.files = Dir["lib/**/*", "exe/*", "README.md", "CHANGELOG.md"]
   spec.bindir = "exe"
   spec.executables = ["rails-openapi-generator"]
   spec.require_paths = ["lib"]
