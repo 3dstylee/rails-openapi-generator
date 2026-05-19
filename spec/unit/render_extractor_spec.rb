@@ -63,16 +63,45 @@ RSpec.describe RailsOpenapiGenerator::RenderExtractor do
     expect(result.schema).to be_nil
   end
 
-  it "detects an explicit head :no_content" do
-    expect(extract("head :no_content").no_content?).to be(true)
-    expect(extract("head 204").no_content?).to be(true)
-    expect(extract("render json: {}").no_content?).to be(false)
-  end
-
   it "returns an empty result for a nil action source" do
     result = described_class.new.extract(nil)
     expect(result.renders_json).to be(false)
-    expect(result.no_content?).to be(false)
+    expect(result.explicit_status).to be_nil
+    expect(result.head?).to be(false)
+  end
+
+  describe "explicit status" do
+    it "reads an explicit status from head :symbol" do
+      expect(extract("head :ok").explicit_status).to eq(200)
+      expect(extract("head :created").explicit_status).to eq(201)
+      expect(extract("head :no_content").explicit_status).to eq(204)
+    end
+
+    it "reads an explicit status from head <integer>" do
+      expect(extract("head 202").explicit_status).to eq(202)
+    end
+
+    it "reads an explicit status from a render status: option" do
+      expect(extract("render json: {}, status: :created").explicit_status).to eq(201)
+    end
+
+    it "ignores an error status and keeps the happy one" do
+      result = extract("return render json: {}, status: :unprocessable_entity unless ok\nhead :ok")
+      expect(result.explicit_status).to eq(200)
+    end
+
+    it "is nil when the action sets no explicit status" do
+      expect(extract("render json: {}").explicit_status).to be_nil
+    end
+
+    it "is nil for an unrecognized status symbol" do
+      expect(extract("head :teapot_party").explicit_status).to be_nil
+    end
+
+    it "flags a happy head call" do
+      expect(extract("head :ok").head?).to be(true)
+      expect(extract("render json: {}").head?).to be(false)
+    end
   end
 
   describe "non-JSON signals" do

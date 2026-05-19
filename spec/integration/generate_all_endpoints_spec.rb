@@ -21,7 +21,8 @@ RSpec.describe "Generate an OpenAPI document for all endpoints", :rails_app do
       "/api/orphan", "/api/pages/{id}", "/api/pages/{id}/download",
       "/api/posts", "/api/reports/chained", "/api/reports/cyclic",
       "/api/reports/single", "/api/reports/via_concern",
-      "/api/users", "/api/users/{id}"
+      "/api/statuses/guarded", "/api/statuses/make", "/api/statuses/mark",
+      "/api/statuses/unmark", "/api/users", "/api/users/{id}"
     )
     expect(document["paths"]["/api/users"].keys).to contain_exactly("get", "post")
   end

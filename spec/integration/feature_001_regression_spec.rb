@@ -52,4 +52,12 @@ RSpec.describe "Feature 001 output is unchanged by response bodies", :rails_app 
     expect(operation).not_to have_key("x-sends-file")
     expect(operation["responses"].values.first).not_to have_key("content")
   end
+
+  it "leaves response kind, body, and tags unchanged when explicit-status detection is added (FR-010)" do
+    # Explicit-status detection changes only status codes — never the response
+    # kind, body schema, or tags of an operation.
+    body = index.dig("responses", "200", "content", "application/json", "schema")
+    expect(body["type"]).to eq("array")
+    expect(index["tags"]).to eq(["Api::UsersController"])
+  end
 end

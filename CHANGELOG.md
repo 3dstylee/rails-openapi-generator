@@ -3,6 +3,23 @@
 All notable changes to this gem are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-05-19
+
+### Added
+
+- Each operation's success response is now filed under the status code the
+  action **explicitly sets** — read from `head :symbol` / `head <integer>`
+  calls and the `status:` option of `render` calls — instead of always being
+  inferred from the HTTP method. A `head` response is documented body-less.
+  Only happy-path (2xx/3xx) statuses are read; error-status guards are ignored.
+
+### Changed (additive)
+
+- An action that sets an explicit status now documents that status (e.g. a POST
+  ending in `head :ok` is documented `200`, not `201`). Actions that set no
+  explicit status keep the HTTP-method convention. Response kind, body, tags,
+  and `x-` marks are unchanged.
+
 ## [0.4.0] - 2026-05-19
 
 ### Added

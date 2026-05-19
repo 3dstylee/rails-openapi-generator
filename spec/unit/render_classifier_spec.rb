@@ -12,7 +12,7 @@ RSpec.describe RailsOpenapiGenerator::RenderClassifier do
 
   def render_result(**overrides)
     RailsOpenapiGenerator::RenderResult.new(
-      schema: nil, renders_json: false, no_content: false,
+      schema: nil, renders_json: false, explicit_status: nil, head: false,
       file_download: false, html_inline: false, template: nil, **overrides
     )
   end

@@ -3,6 +3,9 @@
 module RailsOpenapiGenerator
   # Assembles an operation's success {Response} from a {Classification}: the
   # status code, the kind, and (for JSON) the body schema.
+  #
+  # The status code is the explicit status the action sets (`head` /
+  # `render status:`) when present, and otherwise the HTTP-method convention.
   class ResponseBuilder
     STATUS_BY_METHOD = { "GET" => 200, "PUT" => 200, "PATCH" => 200, "POST" => 201, "DELETE" => 204 }.freeze
     DEFAULT_STATUS = 200
@@ -11,39 +14,41 @@ module RailsOpenapiGenerator
     # jbuilder schema Hash for a JSON endpoint resolved via a view, or nil.
     def build(route, classification:, view_schema: nil)
       render_result = classification.render_result
-      return Response.new(status: 204) if no_content?(route, render_result)
+      status = status_for(route, render_result)
+      # A 204 or a `head` response is a determinate, body-less response.
+      empty = status == 204 || render_result.head?
 
       case classification.kind
       when :html_page
-        Response.new(status: status_for(route), kind: :html_page, page_reference: classification.template_name)
+        Response.new(status: status, kind: :html_page, page_reference: classification.template_name)
       when :file_download
-        Response.new(status: status_for(route), kind: :file_download)
+        Response.new(status: status, kind: :file_download)
       when :json
-        json_response(route, render_result, view_schema)
+        json_response(status, render_result, view_schema, empty)
       else
-        Response.new(status: status_for(route), undeterminable: true)
+        Response.new(status: status, undeterminable: !empty)
       end
     end
 
     private
 
-    def json_response(route, render_result, view_schema)
+    # The explicit status the action sets, falling back to the HTTP-method
+    # convention when the action sets none.
+    def status_for(route, render_result)
+      render_result.explicit_status || STATUS_BY_METHOD.fetch(route.http_method, DEFAULT_STATUS)
+    end
+
+    def json_response(status, render_result, view_schema, empty)
+      return Response.new(status: status) if empty
+
       # A literal `render json:` takes precedence over the jbuilder view.
       body = render_result.renders_json ? render_result.schema : view_schema
 
       if body.nil?
-        Response.new(status: status_for(route), undeterminable: true)
+        Response.new(status: status, undeterminable: true)
       else
-        Response.new(status: status_for(route), body: body)
+        Response.new(status: status, body: body)
       end
-    end
-
-    def no_content?(route, render_result)
-      render_result.no_content? || route.http_method == "DELETE"
-    end
-
-    def status_for(route)
-      STATUS_BY_METHOD.fetch(route.http_method, DEFAULT_STATUS)
     end
   end
 end

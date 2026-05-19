@@ -11,6 +11,10 @@ Rails.application.routes.draw do
     get "reports/chained", to: "reports#chained"
     get "reports/via_concern", to: "reports#via_concern"
     get "reports/cyclic", to: "reports#cyclic"
+    post "statuses/mark", to: "statuses#mark"
+    put "statuses/unmark", to: "statuses#unmark"
+    post "statuses/make", to: "statuses#make"
+    post "statuses/guarded", to: "statuses#guarded"
   end
 
   # A redirect route has no backing controller action — exercises the skip path.

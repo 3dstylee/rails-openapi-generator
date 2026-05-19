@@ -3,25 +3,26 @@
 module RailsOpenapiGenerator
   # The result of inspecting an action body for inline response signals.
   #
-  # `renders_json` is true when the action contains a happy-path `render json:`
-  # (a render with no status, or a 2xx/3xx status). `schema` is set only when
-  # that render's value is literal. `file_download`, `html_inline`, and
-  # `template` surface the non-JSON signals used by {RenderClassifier}.
+  # `renders_json` is true when the action contains a happy-path `render json:`.
+  # `explicit_status` is the last happy-path (2xx/3xx) status the action sets
+  # via `head` or `render status:`, or nil. `head` is true when the action's
+  # success path is a `head` call (a body-less response).
   RenderResult = Struct.new(
-    :schema, :renders_json, :no_content, :file_download, :html_inline, :template,
+    :schema, :renders_json, :explicit_status, :head, :file_download, :html_inline, :template,
     keyword_init: true
   ) do
-    def no_content?
-      no_content
+    def head?
+      head
     end
   end
 
   # Extracts response signals from an action body: a happy-path literal
-  # `render json:`, an explicit no-content render, a `send_file`/`send_data`
-  # download, a `render html:`, and an explicitly rendered template name.
-  # Renders carrying an error status (4xx/5xx) are ignored for the JSON value.
+  # `render json:`, the explicit success status (from `head` and
+  # `render status:`), a `send_file`/`send_data` download, a `render html:`,
+  # and an explicitly rendered template name. Renders carrying an error status
+  # (4xx/5xx) are ignored for the JSON value and the explicit status.
   class RenderExtractor
-    NO_CONTENT = ["no_content", 204].freeze
+    HAPPY_STATUS = (200..399)
     # Sentinel meaning "no happy-path `render json:` was found".
     NONE = :__rog_no_render__
 
@@ -51,7 +52,8 @@ module RailsOpenapiGenerator
       RenderResult.new(
         schema: schema_for(json_value),
         renders_json: !json_value.equal?(NONE),
-        no_content: head_no_content?(node),
+        explicit_status: explicit_status(node, renders),
+        head: happy_head?(node),
         file_download: file_download?(node),
         html_inline: renders.any? { |render| render[:options].key?(:html) },
         template: template_name(renders)
@@ -62,7 +64,7 @@ module RailsOpenapiGenerator
 
     def empty_result
       RenderResult.new(
-        schema: nil, renders_json: false, no_content: false,
+        schema: nil, renders_json: false, explicit_status: nil, head: false,
         file_download: false, html_inline: false, template: nil
       )
     end
@@ -132,11 +134,30 @@ module RailsOpenapiGenerator
       end
     end
 
-    def head_no_content?(node)
-      render_calls(node, "head").any? do |args|
-        value = args.first && LiteralEvaluator.evaluate(args.first)
-        NO_CONTENT.include?(value)
-      end
+    # The last happy-path (2xx/3xx) status the action sets explicitly, or nil.
+    def explicit_status(node, renders)
+      codes = render_status_codes(renders) + head_status_codes(node)
+      codes.select { |code| HAPPY_STATUS.cover?(code) }.last
+    end
+
+    def render_status_codes(renders)
+      renders.filter_map { |render| render[:code] if render[:options].key?(:status) }
+    end
+
+    def head_status_codes(node)
+      render_calls(node, "head").filter_map { |args| head_status(args) }
+    end
+
+    # The status code of a `head` call; `head` with no argument defaults to 200.
+    def head_status(args)
+      return 200 if args.empty?
+
+      status_code(LiteralEvaluator.evaluate(args.first))
+    end
+
+    # True when the action has a `head` call with a happy-path (2xx/3xx) status.
+    def happy_head?(node)
+      head_status_codes(node).any? { |code| HAPPY_STATUS.cover?(code) }
     end
 
     # Collects the argument-array of every `<name>` command call in the subtree.

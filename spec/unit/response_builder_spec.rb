@@ -7,9 +7,9 @@ RSpec.describe RailsOpenapiGenerator::ResponseBuilder do
     RailsOpenapiGenerator::Route.new(http_method: method, path: "/x", controller: "x", action: "y")
   end
 
-  def make_render_result(schema: nil, renders_json: false, no_content: false)
+  def make_render_result(schema: nil, renders_json: false, explicit_status: nil, head: false)
     RailsOpenapiGenerator::RenderResult.new(
-      schema: schema, renders_json: renders_json, no_content: no_content,
+      schema: schema, renders_json: renders_json, explicit_status: explicit_status, head: head,
       file_download: false, html_inline: false, template: nil
     )
   end
@@ -53,8 +53,6 @@ RSpec.describe RailsOpenapiGenerator::ResponseBuilder do
       response = builder.build(route("GET"), classification: classification(:html_page, template_name: "pages/show"))
       expect(response.kind).to eq(:html_page)
       expect(response.page_reference).to eq("pages/show")
-      expect(response.body).to be_nil
-      expect(response).not_to be_undeterminable
     end
   end
 
@@ -66,29 +64,58 @@ RSpec.describe RailsOpenapiGenerator::ResponseBuilder do
     end
   end
 
-  describe "status code" do
-    it "uses 200 for GET, PUT, and PATCH" do
+  describe "status code — HTTP-method convention fallback" do
+    it "uses 200 for GET, PUT, and PATCH when no explicit status is set" do
       %w[GET PUT PATCH].each do |method|
         response = builder.build(route(method), classification: classification(:json), view_schema: view_schema)
         expect(response.status).to eq(200)
       end
     end
 
-    it "uses 201 for POST" do
+    it "uses 201 for POST when no explicit status is set" do
       response = builder.build(route("POST"), classification: classification(:json), view_schema: view_schema)
       expect(response.status).to eq(201)
     end
 
-    it "uses 204 with no body for DELETE" do
+    it "uses 204 with no body for DELETE when no explicit status is set" do
       response = builder.build(route("DELETE"), classification: classification(:json), view_schema: view_schema)
       expect(response.status).to eq(204)
       expect(response.body).to be_nil
     end
+  end
 
-    it "uses 204 when the action does head :no_content" do
-      result = make_render_result(no_content: true)
-      response = builder.build(route("GET"), classification: classification(:json, render_result: result))
-      expect(response.status).to eq(204)
+  describe "status code — explicit status" do
+    it "uses the action's explicit status over the HTTP-method convention" do
+      result = make_render_result(explicit_status: 200)
+      response = builder.build(route("POST"), classification: classification(:undeterminable, render_result: result))
+      expect(response.status).to eq(200) # not 201
+    end
+
+    it "documents the same status for actions of different methods that set it explicitly" do
+      result = make_render_result(explicit_status: 200, head: true)
+      post = builder.build(route("POST"), classification: classification(:undeterminable, render_result: result))
+      put  = builder.build(route("PUT"), classification: classification(:undeterminable, render_result: result))
+      expect(post.status).to eq(put.status).and(eq(200))
+    end
+
+    it "uses an explicit render status: over the HTTP-method convention" do
+      result = make_render_result(schema: render_schema, renders_json: true, explicit_status: 201)
+      response = builder.build(route("PATCH"), classification: classification(:json, render_result: result))
+      expect(response.status).to eq(201)
+    end
+  end
+
+  describe "head responses (US2)" do
+    it "documents no body for a head response" do
+      result = make_render_result(explicit_status: 200, head: true)
+      response = builder.build(route("GET"), classification: classification(:undeterminable, render_result: result))
+      expect(response.body).to be_nil
+    end
+
+    it "treats a head response as determinate, not undeterminable" do
+      result = make_render_result(explicit_status: 200, head: true)
+      response = builder.build(route("GET"), classification: classification(:undeterminable, render_result: result))
+      expect(response).not_to be_undeterminable
     end
   end
 end

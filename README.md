@@ -101,13 +101,22 @@ Field **names and nesting** are always recovered. Field **types** are
 best-effort: typed when read from a literal, permissive (`{}`, meaning "any")
 when read from a jbuilder value expression such as `json.name user.name`.
 
-Each operation's success response is filed under a conventional status code:
+Each operation's success response is filed under the status code the action
+**explicitly sets** — read from `head :symbol` / `head <integer>` calls and the
+`status:` option of `render` calls (e.g. `head :ok` → 200,
+`render json: x, status: :created` → 201). A `head` response is documented with
+no body. When an action sets no explicit status, the HTTP-method convention
+applies:
 
-| Endpoint kind | Status |
-|---------------|--------|
+| Endpoint kind | Convention status |
+|---------------|-------------------|
 | Reads / updates (GET, PUT, PATCH) | 200 |
 | Creation (POST) | 201 |
-| Deletion / `head :no_content` (DELETE) | 204 (no body) |
+| Deletion (DELETE) | 204 (no body) |
+
+Only happy-path (2xx/3xx) statuses are read; an error-status guard
+(`render status: :unprocessable_entity`) does not affect the documented success
+status.
 
 Endpoints whose response shape cannot be determined (non-literal `render json:`,
 serializer-based responses, unlocatable partials) still get a valid success
