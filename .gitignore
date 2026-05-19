@@ -1,0 +1,14 @@
+/.bundle/
+/vendor/bundle/
+/pkg/
+/coverage/
+/doc/
+*.gem
+Gemfile.lock
+.DS_Store
+*.swp
+*.tmp
+
+# Dummy Rails app fixture runtime artifacts
+spec/fixtures/dummy/log/
+spec/fixtures/dummy/tmp/

@@ -1,0 +1,33 @@
+AllCops:
+  TargetRubyVersion: 3.1
+  NewCops: enable
+  SuggestExtensions: false
+  Exclude:
+    - "spec/fixtures/**/*"
+    - "vendor/**/*"
+
+Gemspec/DevelopmentDependencies:
+  EnforcedStyle: gemspec
+
+Style/StringLiterals:
+  EnforcedStyle: double_quotes
+
+Style/StringLiteralsInInterpolation:
+  EnforcedStyle: double_quotes
+
+Metrics:
+  Enabled: false
+
+Style/Documentation:
+  Enabled: false
+
+Naming/FileName:
+  # Intentional dash-named Bundler auto-require shim.
+  Exclude:
+    - "lib/rails-openapi-generator.rb"
+
+Style/FrozenStringLiteralComment:
+  Enabled: true
+
+Layout/LineLength:
+  Max: 120
