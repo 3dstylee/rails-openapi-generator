@@ -38,11 +38,21 @@ module RailsOpenapiGenerator
         when :max        then schema["maximum"] = value
         when :min_length then schema["minLength"] = value
         when :max_length then schema["maxLength"] = value
-        when :format     then schema["pattern"] = value if value.is_a?(String)
+        when :format     then schema["pattern"] = pattern_source(value) if pattern_source(value)
         when :blank      then schema["minLength"] = 1 if value == false && schema["type"] == "string"
         end
       end
       schema
+    end
+
+    # A `:format` constraint can be a String (literal regex source from
+    # the existing `LiteralEvaluator.regexp_value` path) or a Regexp
+    # object (from {ConstantResolver} resolving a Regexp constant).
+    def pattern_source(value)
+      case value
+      when ::String then value
+      when ::Regexp then value.source
+      end
     end
 
     def apply_inclusion(schema, value)

@@ -126,6 +126,54 @@ RSpec.describe RailsOpenapiGenerator::ResponseBuilder do
     end
   end
 
+  describe "multi-content-type entries (feature 012)" do
+    def gate_site(content_type, schema: nil, explicit_status: nil)
+      RailsOpenapiGenerator::RenderSite.new(
+        explicit_status: explicit_status, schema: schema, head: false, source: :action,
+        content_type: content_type
+      )
+    end
+
+    it "builds an entry with content_types when two distinct content types share a status" do
+      result = make_render_result(render_sites: [
+                                    gate_site("application/json", schema: render_schema),
+                                    gate_site("text/html")
+                                  ])
+      response = builder.build(route("GET"), classification: classification(:undeterminable, render_result: result))
+
+      entry = response.entries.first
+      expect(entry.content_types).to be_a(Hash)
+      expect(entry.content_types.keys).to contain_exactly("application/json", "text/html")
+      expect(entry.content_types["application/json"]).to eq(render_schema)
+      expect(entry.content_types["text/html"]).to be_nil
+    end
+
+    it "leaves content_types nil when only one content type contributes at the status" do
+      result = make_render_result(render_sites: [gate_site("application/json", schema: render_schema)])
+      response = builder.build(route("GET"), classification: classification(:undeterminable, render_result: result))
+
+      entry = response.entries.first
+      expect(entry.content_types).to be_nil
+      expect(entry.body).to eq(render_schema)
+    end
+
+    it "groups distinct statuses with their own entries" do
+      err_schema = { "type" => "object", "properties" => { "err" => {} } }
+      sites = [
+        gate_site("application/json", schema: render_schema, explicit_status: 200),
+        gate_site("application/json", schema: err_schema, explicit_status: 422),
+        gate_site("text/html", explicit_status: 200)
+      ]
+      result = make_render_result(render_sites: sites)
+      response = builder.build(route("GET"), classification: classification(:undeterminable, render_result: result))
+
+      statuses = response.entries.map(&:status)
+      expect(statuses).to eq([200, 422])
+      happy = response.entries.find { |entry| entry.status == 200 }
+      expect(happy.content_types.keys).to contain_exactly("application/json", "text/html")
+    end
+  end
+
   describe "redirect responses" do
     it "uses redirect_status as the status and emits no body" do
       result = make_render_result(redirect_status: 302)

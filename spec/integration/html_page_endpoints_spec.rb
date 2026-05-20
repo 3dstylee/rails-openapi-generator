@@ -76,12 +76,13 @@ RSpec.describe "HTML page & file download endpoints", :rails_app do
   end
 
   it "reports the HTML-page and file-download counts (US3)" do
-    # Two HTML pages in the fixture: `api/pages#show` (existing) and
-    # `api/template_renders#as_html` (new in feature 011 — explicit
-    # `formats: :html` on a helper template render).
-    expect(report.html_page_count).to eq(2)
+    # Three HTML pages in the fixture: `api/pages#show` (existing),
+    # `api/template_renders#as_html` (feature 011), and
+    # `api/respond_to#html_only` (new in feature 012 — a `respond_to`
+    # block with only `format.html` resolves the default `.html.erb`).
+    expect(report.html_page_count).to eq(3)
     expect(report.file_download_count).to be >= 1
-    expect(report.summary).to match(/HTML pages:\s+2 endpoints/)
+    expect(report.summary).to match(/HTML pages:\s+3 endpoints/)
   end
 
   it "adds HTML Pages and File Downloads to the top-level tags" do

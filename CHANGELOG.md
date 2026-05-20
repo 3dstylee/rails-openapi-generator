@@ -3,6 +3,161 @@
 All notable changes to this gem are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.13.0] - 2026-05-20
+
+### Added
+
+- `param! :name, Hash do |q| ... end` and `param! :name, Array do |a, i|
+  ... end` block forms are now walked. Nested `<blockvar>.param! ...`
+  calls inside the block become the parent's nested schema:
+  - `Hash` with a block → `{type: object, properties: {...}}` with
+    each nested `param!` documented as a property.
+  - `Array` with a block → `{type: array, items: <child schema>}`
+    using the (single) item declaration.
+- Nested constraint mapping reuses the existing flat-`param!` rules:
+  `in:`, `required:`, `min:`/`max:`, `format:`, etc. Combined with
+  feature 013, a nested `in: Module::CONSTANT` resolves the constant
+  and emits the actual `enum:` on the items schema — closing the
+  full user-reported case (`param! :moods, Array do |p, i| p.param!
+  i, String, in: Module::MOODS end`).
+- Recursion is bounded by the existing
+  `Configuration#method_resolution_depth` setting (default 5).
+  Subtrees beyond the bound fall back to a bare object/array schema
+  and the generator completes successfully.
+
+### Changed (additive)
+
+- Operations whose `param!` calls have no block (or have a block on
+  a non-Hash/Array type) emit byte-identical output to `0.12.0` —
+  the new walker only activates when a `Hash`/`Array` `param!` has
+  a do-block.
+- `BeforeActionResolver#own_source_file` now prefers
+  `Module.const_source_location` over the first-method
+  source_location heuristic. The previous heuristic depended on
+  `instance_methods(false)` ordering, which is not strictly
+  guaranteed across autoload reloads; the new lookup is stable.
+  This fixes a sporadic failure to recover `only:` / `except:`
+  literal-array filters when running large test suites.
+
+### Out of scope (deferred to a future feature)
+
+- The OpenAPI object-level `required:` array on nested objects —
+  per-property `required: true` flags are documented within each
+  property; lifting them to a parent-object `required:` list is
+  out of scope.
+- Heterogeneous array `items:` (`oneOf: [...]`) — only the last
+  item declaration in source order is used.
+- Block-on-non-Hash/Array types — silently ignored.
+
+## [0.12.0] - 2026-05-20
+
+### Added
+
+- Constant references used as `param!` argument values are now
+  resolved at generation time and emitted into the parameter
+  schema. `param! :mood, String, in: Module::CONSTANT` where the
+  constant is a literal Array of Strings now documents
+  `enum: [...]` with the actual values. Resolution covers three
+  AST shapes: bare constants (`FOO`), qualified paths
+  (`A::B::CONST`), and top-level references (`::Foo`).
+- The "non-literal param! arguments for X" warning is no longer
+  emitted for a parameter whose only previously-unresolved
+  argument was a schema-compatible constant reference.
+- The "schema-compatible" set is intentionally narrow: primitives
+  (`String`, `Symbol`, `Integer`, `Float`, `true`, `false`),
+  `Array` of recursively-compatible elements, `Hash` with
+  `String`/`Symbol` keys and recursively-compatible values,
+  `Range` of `Integer` or `Float` ends, and `Regexp`. Other
+  values (class references, Procs, instances, mixed-numeric
+  Ranges, etc.) are treated as unresolved.
+- `Object.const_get(name, true)` is used for the lookup — with
+  autoload — so constants in yet-untouched files are loaded on
+  demand the same way Rails resolves a class name. Any
+  `StandardError` or `LoadError` is silently treated as
+  unresolved; the generator never raises because of this feature.
+- Resolution is cached per generator run; the same qualified
+  name triggers at most one `const_get` call.
+- `SchemaMapper#apply_constraints` now also accepts a `Regexp`
+  value for `:format` (the existing String form continues to
+  work) — needed because a Regexp constant resolves to a Regexp
+  object, not its source String.
+
+### Known limitation
+
+- `param!` calls nested inside a block (feature 008's
+  `param! :things, Array do |p, i|; p.param! i, ...; end`
+  pattern) are not walked by today's `ParamExtractor`, so a
+  constant referenced inside such a nested block does NOT yet
+  emit its `enum` on the inner items schema. Feature 013's
+  constant resolution covers the top-level `param!` case (the
+  primary motivating shape); the nested case unblocks once
+  feature 008 is implemented (no additional work in feature
+  013 will be required — the resolver already runs through the
+  same evaluator).
+
+### Changed (additive)
+
+- Operations whose `param!` calls have always been fully literal
+  in the source emit byte-identical output to `0.11.0`. The new
+  evaluator paths fire only when the AST contains a
+  constant-reference node.
+
+### Out of scope (deferred to a future feature)
+
+- Constant references outside `param!` calls — `redirect_to`,
+  `render`, `respond_to`, etc.
+- Constants assigned inside controller actions.
+- Constants resolved through a method chain (`Service.new.X` —
+  not a constant reference).
+
+## [0.11.0] - 2026-05-20
+
+### Added
+
+- `respond_to do |format| ... end` blocks are now detected in the
+  action body, helper methods, and `before_action` callbacks. Each
+  `format.<symbol>` call inside the block contributes a content-type
+  entry to the operation's response set:
+  - `format.json` → `application/json` (schema from the action's
+    default `.json.jbuilder`, or from an inline `render json:` inside
+    the format block).
+  - `format.html` → `text/html` (the existing HTML-page placeholder
+    schema, or from an inline render inside the format block).
+- When both `format.json` AND `format.html` apply at the same status,
+  the operation's response carries BOTH content types under one
+  OpenAPI response entry — the standard OpenAPI 3.1 multi-content-
+  type shape:
+  ```yaml
+  '200':
+    description: Successful response
+    content:
+      application/json: { schema: { ... } }
+      text/html:        { schema: { type: string } }
+  ```
+- An inline `render` call inside a `format.<symbol>` block overrides
+  the default-view lookup for that format; the inline render's
+  status, schema, and content type apply.
+- Unknown format symbols (`format.xml`, `format.csv`, `format.pdf`,
+  `format.any`, `format.all`) are silently ignored — they contribute
+  no content type and the operation's classification is unchanged.
+
+### Changed (additive)
+
+- Content types within a single OpenAPI response entry are emitted
+  in alphabetical order (`application/json` before `text/html`) for
+  byte-stable output.
+- Operations whose code does NOT contain a `respond_to` block emit
+  byte-identical output to `0.10.0` — the new multi-content-type
+  emission path activates only when a `respond_to` block contributes
+  multiple content types at the same status.
+
+### Out of scope (deferred to a future feature)
+
+- `format.xml` / `format.csv` / `format.pdf` / other format symbols
+  beyond `:json` and `:html`.
+- `format.any` / `format.all` and dynamic dispatch (`format.send(...)`).
+- `respond_to` calls without a block argument (invalid Rails syntax).
+
 ## [0.10.0] - 2026-05-20
 
 ### Added

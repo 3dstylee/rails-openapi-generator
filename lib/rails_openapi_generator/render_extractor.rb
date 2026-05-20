@@ -25,7 +25,7 @@ module RailsOpenapiGenerator
   # points at an HTML view; nil otherwise.
   RenderSite = Struct.new(
     :explicit_status, :schema, :head, :source,
-    :template_name, :format_hint, :kind_hint,
+    :template_name, :format_hint, :kind_hint, :content_type,
     keyword_init: true
   ) do
     def head?
@@ -70,6 +70,13 @@ module RailsOpenapiGenerator
     REDIRECT_STATUS = (300..399)
     REDIRECT_METHODS = %w[redirect_to redirect_back redirect_back_or_to].freeze
     DEFAULT_REDIRECT_STATUS = 302
+    # `respond_to` format symbols mapped to OpenAPI content types (feature 012).
+    # Symbols not in this map are silently ignored. A future feature MAY extend it.
+    FORMAT_CONTENT_TYPES = { "json" => "application/json", "html" => "text/html" }.freeze
+    # Placeholder template-name used by a bare `format.<symbol>` gate. The
+    # Generator's resolve_template_sites! pass swaps this for the action's
+    # default view (`<controller>/<action>`) before view lookup runs.
+    SENTINEL_DEFAULT_VIEW = "__rog_default_view__"
     # Sentinel meaning "no happy-path `render json:` was found".
     NONE = :__rog_no_render__
 
@@ -137,7 +144,8 @@ module RailsOpenapiGenerator
       json_sites = renders.filter_map { |render| json_site(render, source) }
       template_sites = renders.filter_map { |render| template_site(render, source) }
       head_sites = head_sites(node, source)
-      json_sites + template_sites + head_sites
+      gate_sites = respond_to_gate_sites(node, source)
+      json_sites + template_sites + head_sites + gate_sites
     end
 
     def json_site(render, source)
@@ -190,6 +198,157 @@ module RailsOpenapiGenerator
       render_calls(node, "head").map do |args|
         RenderSite.new(explicit_status: head_status(args), schema: nil, head: true, source: source)
       end
+    end
+
+    # `respond_to do |fmt| fmt.json; fmt.html { ... }; end` — for each
+    # mapped `<param>.<format>` call inside the block, build a format-gate
+    # site contributing a content type to the operation's response set.
+    # Unmapped formats (`format.xml`, `format.any`, etc.) are skipped.
+    def respond_to_gate_sites(node, source)
+      sites = []
+      respond_to_blocks(node).each do |block_node|
+        param_name = block_param_name(block_node)
+        next if param_name.nil?
+
+        body = do_or_brace_body(block_node)
+        next if body.nil?
+
+        collect_format_gates(body, param_name, source, sites)
+      end
+      sites
+    end
+
+    # Every `respond_to do |...| ... end` (or `{|...|...}`) block in the
+    # subtree. Returns the `:do_block` / `:brace_block` AST nodes.
+    def respond_to_blocks(node, found = [])
+      return found unless node.is_a?(Array)
+
+      if node[0] == :method_add_block
+        call_node = node[1]
+        if fcall_named?(call_node, "respond_to") || method_add_arg_named?(call_node, "respond_to")
+          block_node = node[2]
+          found << block_node if block_node.is_a?(Array) && %i[do_block brace_block].include?(block_node[0])
+        end
+      end
+      node.each { |child| respond_to_blocks(child, found) if child.is_a?(Array) }
+      found
+    end
+
+    def fcall_named?(node, name)
+      node.is_a?(Array) && node[0] == :fcall && ident?(node[1], name)
+    end
+
+    def method_add_arg_named?(node, name)
+      return false unless node.is_a?(Array) && node[0] == :method_add_arg
+
+      fcall_named?(node[1], name)
+    end
+
+    # `[:do_block, [:block_var, [:params, [[:@ident, NAME, ...]], ...]], ...]`
+    # or `[:brace_block, [:block_var, ...], ...]`. Returns NAME or nil.
+    def block_param_name(block_node)
+      var_node = block_node[1]
+      return nil unless var_node.is_a?(Array) && var_node[0] == :block_var
+
+      params = var_node[1]
+      return nil unless params.is_a?(Array) && params[0] == :params
+
+      first_param = Array(params[1]).first
+      return nil unless first_param.is_a?(Array) && first_param[0] == :@ident
+
+      first_param[1]
+    end
+
+    # Returns the statement list inside the block body, or nil.
+    def do_or_brace_body(block_node)
+      case block_node[0]
+      when :do_block
+        bodystmt = block_node[2]
+        bodystmt.is_a?(Array) && bodystmt[0] == :bodystmt ? bodystmt[1] : nil
+      when :brace_block
+        block_node[2]
+      end
+    end
+
+    # Walks `body` for `<param>.<format>` calls (with or without a body
+    # block) and builds a gate site per mapped format. Skips nested
+    # `:def`/`:defs` subtrees so a `respond_to` inside a nested method
+    # definition (rare) is handled by its own outer pass. When a node
+    # matches as a gate, recursion does NOT descend into its children
+    # — otherwise a `:method_add_block` gate would emit twice (once for
+    # the outer block-bearing call, again for the inner bare `:call`).
+    def collect_format_gates(body, param_name, source, sites)
+      return unless body.is_a?(Array)
+
+      gate = format_call_gate(body, param_name)
+      if gate
+        append_gate_sites(gate, source, sites)
+        return
+      end
+
+      body.each do |child|
+        next unless child.is_a?(Array)
+        next if %i[def defs].include?(child[0])
+
+        collect_format_gates(child, param_name, source, sites)
+      end
+    end
+
+    # If `node` is a `:call` to `<param>.<format>` (optionally wrapped in
+    # `:method_add_block` with a body block), returns
+    # `{ format: <symbol>, content_type: <ct>, body: <block_body_or_nil> }`;
+    # otherwise nil. Unmapped formats return nil.
+    def format_call_gate(node, param_name)
+      block_body = nil
+      call_node = node
+
+      if node[0] == :method_add_block
+        call_node = node[1]
+        inner = node[2]
+        block_body = do_or_brace_body(inner) if inner.is_a?(Array)
+      end
+
+      return nil unless call_node.is_a?(Array) && call_node[0] == :call
+
+      receiver = call_node[1]
+      return nil unless var_ref_named?(receiver, param_name)
+
+      method_node = call_node[3]
+      return nil unless method_node.is_a?(Array) && method_node[0] == :@ident
+
+      format = method_node[1]
+      content_type = FORMAT_CONTENT_TYPES[format]
+      return nil if content_type.nil?
+
+      { format: format, content_type: content_type, body: block_body }
+    end
+
+    def var_ref_named?(node, name)
+      node.is_a?(Array) && node[0] == :var_ref && node[1].is_a?(Array) &&
+        node[1][0] == :@ident && node[1][1] == name
+    end
+
+    # Builds sites for one gate. If the gate has a body block containing
+    # render/head calls, those sites carry the gate's content_type;
+    # otherwise emit a single unresolved default-view template site.
+    def append_gate_sites(gate, source, sites)
+      block_body = gate[:body]
+
+      if block_body
+        nested_renders = collect_renders(block_body)
+        nested = render_sites(block_body, nested_renders, source: source)
+        nested.each { |site| site.content_type = gate[:content_type] }
+        if nested.any?
+          sites.concat(nested)
+          return
+        end
+      end
+
+      sites << RenderSite.new(
+        explicit_status: nil, schema: nil, head: false, source: source,
+        template_name: SENTINEL_DEFAULT_VIEW, format_hint: gate[:format].to_sym,
+        content_type: gate[:content_type]
+      )
     end
 
     def schema_for(json_value)
@@ -312,12 +471,23 @@ module RailsOpenapiGenerator
     # Collects the argument-array of every `<name>` command call in the subtree.
     def render_calls(node, name, found = [])
       return found unless node.is_a?(Array)
+      return found if respond_to_block_subtree?(node)
 
       args = command_args(node, name)
       found << args if args
 
       node.each { |child| render_calls(child, name, found) if child.is_a?(Array) }
       found
+    end
+
+    # True when `node` is a `:method_add_block` whose call is `respond_to`
+    # — the subtree's renders / heads belong to format gates and are
+    # collected by `respond_to_gate_sites`, not by the top-level pass.
+    def respond_to_block_subtree?(node)
+      return false unless node[0] == :method_add_block
+
+      call = node[1]
+      fcall_named?(call, "respond_to") || method_add_arg_named?(call, "respond_to")
     end
 
     def command_args(node, name)

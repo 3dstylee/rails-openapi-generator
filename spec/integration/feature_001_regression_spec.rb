@@ -120,4 +120,28 @@ RSpec.describe "Feature 001 output is unchanged by response bodies", :rails_app 
     content = op["responses"].values.first["content"]
     expect(content.keys).to eq(["text/html"])
   end
+
+  it "leaves non-respond_to JSON endpoints byte-identical under feature 012 (SC-004)" do
+    # An action without a respond_to block must NOT gain a multi-content-
+    # type entry. The entry stays single-content (application/json only),
+    # so the documented `content` map has exactly one key.
+    content = index["responses"]["200"]["content"]
+    expect(content.keys).to eq(["application/json"])
+  end
+
+  it "leaves param!-using endpoints byte-identical under feature 013 (SC-004)" do
+    # api/users#index uses `param! :query, String, blank: false` and
+    # `param! :per_page, Integer, in: 1..100` — both literal arguments.
+    # Feature 013's constant resolver MUST NOT change these schemas.
+    per_page = index["parameters"].find { |param| param["name"] == "per_page" }
+    expect(per_page["schema"]).to include("type" => "integer", "minimum" => 1, "maximum" => 100)
+  end
+
+  it "leaves flat param! endpoints byte-identical under feature 008 (SC-005)" do
+    # No nested `param!` blocks in api/users#index, so its parameter
+    # schemas must not gain spurious `nested` / `properties` keys.
+    per_page = index["parameters"].find { |param| param["name"] == "per_page" }
+    expect(per_page["schema"]).not_to have_key("properties")
+    expect(per_page["schema"]).not_to have_key("items")
+  end
 end

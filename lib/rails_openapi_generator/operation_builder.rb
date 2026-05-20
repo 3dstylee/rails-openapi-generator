@@ -83,7 +83,7 @@ module RailsOpenapiGenerator
       unless body_method?(route)
         non_path_calls(route, param_calls).each do |call|
           parameters << Parameter.new(
-            name: call.name, location: :query, required: call.required, schema: @schema_mapper.map(call)
+            name: call.name, location: :query, required: call.required, schema: schema_for(call)
           )
         end
         implicit.each do |name|
@@ -103,7 +103,7 @@ module RailsOpenapiGenerator
       properties = {}
       required   = []
       body_calls.sort_by(&:name).each do |call|
-        properties[call.name] = @schema_mapper.map(call)
+        properties[call.name] = schema_for(call)
         required << call.name if call.required
       end
       implicit.each { |name| properties[name] ||= {} }
@@ -115,6 +115,27 @@ module RailsOpenapiGenerator
 
     def sort_properties(properties)
       properties.sort.to_h
+    end
+
+    # Builds the schema for one parameter, recursively folding the
+    # nested-block tree (feature 008) into `properties:` (for a Hash
+    # parent) or `items:` (for an Array parent). Flat ParamCalls
+    # (`nested: nil`) emit byte-identical schemas to pre-0.13.0.
+    def schema_for(call)
+      flat = @schema_mapper.map(call)
+      return flat if call.nested.nil?
+
+      case call.type
+      when "Hash"
+        nested_props = Array(call.nested).each_with_object({}) do |child, map|
+          map[child.name] = schema_for(child) if child.name
+        end
+        flat.merge("type" => "object", "properties" => sort_properties(nested_props))
+      when "Array"
+        flat.merge("type" => "array", "items" => schema_for(call.nested))
+      else
+        flat
+      end
     end
 
     def non_path_calls(route, param_calls)

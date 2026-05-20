@@ -1,11 +1,16 @@
 # frozen_string_literal: true
 
 module RailsOpenapiGenerator
-  # One status entry of an operation's response set: a status code and an
-  # optional body schema. The body is nil for a body-less entry (head, no-
-  # known-body, or non-JSON kind). It may be an `{"oneOf": [...]}` schema
-  # for a multi-shape union (FR-004).
-  ResponseEntry = Struct.new(:status, :body, keyword_init: true)
+  # One status entry of an operation's response set: a status code, an
+  # optional body schema, and (feature 012) an optional multi-content-type
+  # map. The body is nil for a body-less entry (head, no-known-body, or
+  # non-JSON kind). It may be an `{"oneOf": [...]}` schema for a
+  # multi-shape union (feature 010 FR-004). `content_types`, when set,
+  # supersedes `body` at emission time: each key is an OpenAPI content
+  # type string (e.g. `"application/json"`, `"text/html"`); each value is
+  # the schema for that content type, or nil for a known-but-schema-less
+  # type (today's `text/html` placeholder).
+  ResponseEntry = Struct.new(:status, :body, :content_types, keyword_init: true)
 
   # The success response of one operation, as an ordered list of status
   # entries (`entries`). A single-status operation has a one-element list

@@ -115,10 +115,35 @@ module RailsOpenapiGenerator
     end
 
     # Groups sites by status, applies the union/dedup rules, and returns
-    # an ascending-status list of {ResponseEntry}.
+    # an ascending-status list of {ResponseEntry}. When a status group
+    # carries sites with distinct `content_type` markers (a `respond_to`
+    # block with multiple format gates, per feature 012), the entry
+    # carries a `content_types` map keyed by content type; otherwise the
+    # entry uses the single-content-type `body` path.
     def entries_from_sites(sites, route)
       grouped = sites.group_by { |site| resolved_status(site, route) }
-      grouped.keys.sort.map { |status| ResponseEntry.new(status: status, body: union_body(grouped[status])) }
+      grouped.keys.sort.map { |status| build_entry(status, grouped[status]) }
+    end
+
+    def build_entry(status, group)
+      gate_content_types = group.filter_map(&:content_type).uniq
+      if gate_content_types.size >= 2
+        ResponseEntry.new(status: status, content_types: content_types_map(group, gate_content_types))
+      else
+        ResponseEntry.new(status: status, body: union_body(group))
+      end
+    end
+
+    # Per-content-type body map: each gate's content type maps to the
+    # union body of sites contributing to that content type. The HTML
+    # bucket (`text/html`) collapses to a nil body — DocumentBuilder
+    # emits the existing `{type: string}` placeholder schema for it.
+    def content_types_map(group, content_types)
+      content_types.sort.to_h do |content_type|
+        bucket = group.select { |site| site.content_type == content_type }
+        body = content_type == "text/html" ? nil : union_body(bucket)
+        [content_type, body]
+      end
     end
 
     # The numeric status the site documents under: explicit status if set,

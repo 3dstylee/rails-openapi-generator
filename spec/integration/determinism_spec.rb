@@ -68,6 +68,48 @@ RSpec.describe "Deterministic output", :rails_app do
     FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
   end
 
+  it "produces stable nested param! block output across runs (feature 008)" do
+    operations = Array.new(2) do
+      config = RailsOpenapiGenerator::Configuration.new
+      config.output_path = File.expand_path("../../tmp/spec/det_nested_params.json", __dir__)
+      RailsOpenapiGenerator::Generator.new(config).document["paths"]["/api/nested_params/search"]["post"]
+    end
+
+    expect(operations[0]).to eq(operations[1])
+  ensure
+    FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
+  end
+
+  it "produces a stable resolved-constant enum across runs (feature 013)" do
+    enums = Array.new(2) do
+      config = RailsOpenapiGenerator::Configuration.new
+      config.output_path = File.expand_path("../../tmp/spec/det_constants.json", __dir__)
+      op = RailsOpenapiGenerator::Generator.new(config)
+                                           .document["paths"]["/api/constant_references/execute"]["post"]
+      mood = op.dig("requestBody", "content", "application/json", "schema", "properties", "mood")
+      mood["enum"]
+    end
+
+    expect(enums[0]).to eq(enums[1])
+    expect(enums[0]).to eq(%w[modern classic minimalist scandinavian industrial])
+  ensure
+    FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
+  end
+
+  it "produces a stable multi-content-type response across runs (feature 012)" do
+    contents = Array.new(2) do
+      config = RailsOpenapiGenerator::Configuration.new
+      config.output_path = File.expand_path("../../tmp/spec/det_respond_to.json", __dir__)
+      doc = RailsOpenapiGenerator::Generator.new(config).document
+      doc["paths"]["/api/respond_to/index"]["get"]["responses"]["200"]["content"]
+    end
+
+    expect(contents[0]).to eq(contents[1])
+    expect(contents[0].keys).to eq(contents[0].keys.sort)
+  ensure
+    FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
+  end
+
   it "produces stable template-render output across runs (feature 011)" do
     operations = Array.new(2) do
       config = RailsOpenapiGenerator::Configuration.new

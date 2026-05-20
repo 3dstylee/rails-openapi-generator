@@ -177,6 +177,39 @@ An action whose only renders are HTML-template renders at a single status
 classifies as an HTML page (single-entry, `text/html`) — even when the
 render lives in a helper.
 
+`respond_to do |format| ... end` blocks are detected too. Each
+`format.json` gate adds an `application/json` content (schema from the
+default `.json.jbuilder` or from an inline render), each `format.html`
+gate adds a `text/html` content (default `.html.*` or inline render).
+When both apply at the same status, the response carries both content
+types under one OpenAPI entry:
+
+```yaml
+'200':
+  description: Successful response
+  content:
+    application/json: { schema: { ... } }
+    text/html:        { schema: { type: string } }
+```
+
+Only `:json` and `:html` format symbols are mapped in v1. `format.xml`,
+`format.csv`, `format.any`, `format.all`, and dynamic dispatch are
+silently ignored.
+
+Constants used as `param!` argument values are resolved at generation
+time. `param! :mood, String, in: Module::CONSTANT` documents the
+parameter's `enum` from the constant's actual value when that value
+is schema-compatible — an Array of primitives, a Range (`minimum`/
+`maximum`), a Regexp (`pattern`), a primitive, or a recursively-
+checked Hash. Lookup uses `Object.const_get(name, true)` with
+autoload, results are cached per generator run, and any lookup
+failure (`NameError`, `LoadError`) is silently treated as
+unresolved — the generator never raises because of this feature.
+Bare (`FOO`), qualified (`A::B::C`), and top-level (`::Foo`)
+constant references are all supported. Constants referenced
+outside `param!` calls (in `render`, `redirect_to`, `respond_to`,
+etc.) are out of scope in v1.
+
 Endpoints whose response shape cannot be determined (non-literal `render json:`,
 serializer-based responses, unlocatable partials) still get a valid success
 response with no body schema, and are named in the run report. No controller

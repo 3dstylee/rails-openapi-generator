@@ -169,6 +169,67 @@ RSpec.describe RailsOpenapiGenerator::RenderExtractor do
     end
   end
 
+  describe "respond_to format gates (feature 012)" do
+    def gates(source)
+      extract(source).render_sites.select(&:content_type)
+    end
+
+    it "emits an application/json gate for `format.json`" do
+      sites = gates("respond_to do |format|; format.json; end")
+      expect(sites.map(&:content_type)).to eq(["application/json"])
+      expect(sites.first.format_hint).to eq(:json)
+      expect(sites.first.template_name).to eq(RailsOpenapiGenerator::RenderExtractor::SENTINEL_DEFAULT_VIEW)
+    end
+
+    it "emits a text/html gate for `format.html`" do
+      sites = gates("respond_to do |format|; format.html; end")
+      expect(sites.map(&:content_type)).to eq(["text/html"])
+      expect(sites.first.format_hint).to eq(:html)
+    end
+
+    it "emits both gates for `format.html { ... }; format.json`" do
+      source = <<~RUBY
+        respond_to do |format|
+          format.html { do_something }
+          format.json
+        end
+      RUBY
+      sites = gates(source)
+      expect(sites.map(&:content_type)).to contain_exactly("application/json", "text/html")
+    end
+
+    it "uses an inline render's schema for `format.json { render json: { id: 1 } }`" do
+      source = "respond_to do |format|; format.json { render json: { id: 1, ok: true } }; end"
+      sites = gates(source)
+      expect(sites.size).to eq(1)
+      expect(sites.first.content_type).to eq("application/json")
+      expect(sites.first.schema["properties"]).to include("id", "ok")
+      expect(sites.first.template_name).to be_nil
+    end
+
+    it "ignores unmapped format symbols (`format.xml`)" do
+      sites = gates("respond_to do |format|; format.xml; end")
+      expect(sites).to be_empty
+    end
+
+    it "captures the block parameter name (not hard-coded to `format`)" do
+      sites = gates("respond_to do |fmt|; fmt.json; fmt.html; end")
+      expect(sites.map(&:content_type)).to contain_exactly("application/json", "text/html")
+    end
+
+    it "does not detect bare `format.json` outside a respond_to block" do
+      sites = gates("format.json")
+      expect(sites).to be_empty
+    end
+
+    it "honors an inline render's explicit status (`render json: ..., status: :unprocessable_entity`)" do
+      source = "respond_to do |format|; format.json { render json: { error: 1 }, status: :unprocessable_entity }; end"
+      sites = gates(source)
+      expect(sites.first.content_type).to eq("application/json")
+      expect(sites.first.explicit_status).to eq(422)
+    end
+  end
+
   describe "redirect status" do
     it "is 302 for a bare redirect_to" do
       expect(extract('redirect_to "/x"').redirect_status).to eq(302)

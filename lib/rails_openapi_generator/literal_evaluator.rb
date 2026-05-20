@@ -8,6 +8,15 @@ module RailsOpenapiGenerator
     # Sentinel for a value that cannot be statically resolved.
     UNRESOLVED = :__rog_unresolved__
 
+    class << self
+      # The {ConstantResolver} instance the evaluator delegates to when a
+      # constant-reference node is encountered. The {Generator} sets this
+      # at the start of each run; unit specs that don't opt into constant
+      # resolution leave it `nil`, in which case constant references
+      # evaluate to {UNRESOLVED} (the pre-0.12.0 behavior).
+      attr_accessor :resolver
+    end
+
     module_function
 
     # Returns the Ruby value of a literal Ripper node, or {UNRESOLVED}.
@@ -24,9 +33,24 @@ module RailsOpenapiGenerator
       when :array            then array_value(node[1])
       when :dot2             then range_value(node, exclude_end: false)
       when :dot3             then range_value(node, exclude_end: true)
-      when :var_ref          then keyword_value(node[1])
+      when :var_ref          then var_ref_value(node[1])
+      when :const_path_ref   then const_path_value(node)
+      when :top_const_ref    then const_value_for(node[1].is_a?(Array) ? node[1][1] : nil)
       when :hash             then hash_value(node[1])
       when :bare_assoc_hash  then assoc_hash(node[1])
+      else UNRESOLVED
+      end
+    end
+
+    # A `:var_ref` carries either a `:@kw` (true/false/nil), a `:@const`
+    # (a bare constant reference), or a `:@ident` (a local variable —
+    # not statically known).
+    def var_ref_value(child)
+      return UNRESOLVED unless child.is_a?(Array)
+
+      case child[0]
+      when :@kw    then keyword_value(child)
+      when :@const then const_value_for(child[1])
       else UNRESOLVED
       end
     end
@@ -35,6 +59,37 @@ module RailsOpenapiGenerator
       return UNRESOLVED unless node.is_a?(Array) && node[0] == :@kw
 
       { "true" => true, "false" => false, "nil" => nil }.fetch(node[1], UNRESOLVED)
+    end
+
+    # `A::B::C` parses right-associatively: the LEFT child is either a
+    # `:var_ref` (the head, like `A`), a `:top_const_ref` (`::A`), or
+    # another `:const_path_ref` (chained). Build the joined qualified
+    # name and delegate to the resolver.
+    def const_path_value(node)
+      name = const_path_qualified_name(node)
+      const_value_for(name)
+    end
+
+    def const_path_qualified_name(node)
+      return nil unless node.is_a?(Array)
+
+      case node[0]
+      when :const_path_ref
+        left = const_path_qualified_name(node[1])
+        right = node[2].is_a?(Array) && node[2][0] == :@const ? node[2][1] : nil
+        left && right ? "#{left}::#{right}" : nil
+      when :top_const_ref
+        node[1].is_a?(Array) && node[1][0] == :@const ? node[1][1] : nil
+      when :var_ref
+        child = node[1]
+        child.is_a?(Array) && child[0] == :@const ? child[1] : nil
+      end
+    end
+
+    def const_value_for(name)
+      return UNRESOLVED if name.nil? || resolver.nil?
+
+      resolver.resolve(name)
     end
 
     def string_value(node)

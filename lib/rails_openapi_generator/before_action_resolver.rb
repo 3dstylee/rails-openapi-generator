@@ -84,8 +84,18 @@ module RailsOpenapiGenerator
     end
 
     def own_source_file(controller_class)
+      # Prefer `Module.const_source_location` for a stable lookup — it
+      # returns the file where the constant was defined, independent of
+      # method-definition order or autoload reload state. Falls back to
+      # the first-method-source-location heuristic for constants whose
+      # source_location is unavailable (anonymous or runtime-defined
+      # classes).
+      name = controller_class.name
+      from_const = name && Module.const_source_location(name)&.first
+      return from_const if from_const
+
       methods = controller_class.instance_methods(false) + controller_class.private_instance_methods(false)
-      methods.filter_map { |name| controller_class.instance_method(name).source_location&.first }.first
+      methods.filter_map { |m| controller_class.instance_method(m).source_location&.first }.first
     rescue StandardError
       nil
     end

@@ -32,6 +32,7 @@ module RailsOpenapiGenerator
 
     def setup_pipeline
       views_root = views_root_path
+      LiteralEvaluator.resolver = ConstantResolver.new
       @locator          = SourceLocator.new
       @parser           = YardParser.new
       @param_extractor  = ParamExtractor.new
@@ -122,6 +123,13 @@ module RailsOpenapiGenerator
     def resolve_template_sites!(sites, route)
       Array(sites).each do |site|
         next unless site&.template?
+
+        # A `respond_to` format gate without an inline render uses the
+        # sentinel as its template name; expand to the action's default
+        # view path (`<controller>/<action>`) before lookup runs.
+        if site.template_name == RenderExtractor::SENTINEL_DEFAULT_VIEW
+          site.template_name = "#{route.controller}/#{route.action}"
+        end
 
         view = @view_locator.locate_view(route, site.template_name, format_hint: site.format_hint)
         case view&.kind
