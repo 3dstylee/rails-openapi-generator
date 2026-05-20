@@ -164,7 +164,12 @@ Actions that produce no static response signal — no `render`, no
 `head`, no `redirect_to`, no `respond_to`, no resolvable view, and no
 contributing extras (helpers / `before_action` / `rescue_from`) — are
 documented as a body-less response at the HTTP-method convention
-status (200/201/204). The
+status (200/201/204). When the action itself has no signal but
+extras (typically `rescue_from`) contribute only error-status entries,
+the convention-status body-less entry is still documented alongside
+those errors — Rails returns an implicit empty response for the happy
+path, so the operation gets both the implicit 200 and the rescue's
+4xx/5xx entries. The
 `"response shape could not be determined"` warning is **not** emitted
 for these actions; Rails returns an implicit empty response at
 runtime, so the documentation matches reality. (Trade-off: serializer-

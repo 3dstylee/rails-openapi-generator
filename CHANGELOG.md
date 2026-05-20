@@ -3,6 +3,23 @@
 All notable changes to this gem are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.17.0] - 2026-05-20
+
+### Fixed
+
+- An action with no own response signal (no `render`, no `head`, no
+  `redirect_to`, no resolvable view) but with extras contributing
+  only error-status entries (typically `rescue_from`) now documents
+  a body-less entry at the HTTP-method convention status
+  (200/201/204) alongside those error entries. Previously the
+  operation lost its happy-path entry entirely, documenting only
+  the rescue's 4xx/5xx statuses — which misrepresents Rails'
+  runtime behavior (an implicit empty response on the happy path).
+- Operations whose action source contributes any render site
+  (`render :template`, `head :ok`, `render json:`, inline render)
+  emit byte-identical output to `0.16.0` — the new branch fires
+  only in the "no action signal + non-empty extras" gap.
+
 ## [0.16.0] - 2026-05-20
 
 ### Added

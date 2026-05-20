@@ -206,6 +206,79 @@ RSpec.describe RailsOpenapiGenerator::ResponseBuilder do
     end
   end
 
+  describe "implicit 200 with error extras (feature 017)" do
+    def extra_site(status)
+      schema = { "type" => "object", "properties" => { "error" => { "type" => "string" } } }
+      RailsOpenapiGenerator::RenderSite.new(
+        explicit_status: status, schema: schema, head: false, source: :rescue_from
+      )
+    end
+
+    it "adds a body-less convention-status entry when the action has no render sites" do
+      result = make_render_result(render_sites: [])
+      response = builder.build(
+        route("GET"),
+        classification: classification(:undeterminable, render_result: result),
+        view_schema: nil,
+        extra_sites: [extra_site(404)]
+      )
+
+      statuses = response.entries.map(&:status)
+      expect(statuses).to contain_exactly(200, 404)
+      happy = response.entries.find { |entry| entry.status == 200 }
+      expect(happy.body).to be_nil
+    end
+
+    it "honors the explicit status when the action sets one but contributes no body" do
+      # An action with `head :no_content` contributes a render site, so the
+      # new branch must NOT fire. A 204 entry plus the rescue's 404 — no
+      # spurious 200.
+      result = make_render_result(explicit_status: 204, head: true)
+      response = builder.build(
+        route("GET"),
+        classification: classification(:undeterminable, render_result: result),
+        view_schema: nil,
+        extra_sites: [extra_site(404)]
+      )
+
+      expect(response.entries.map(&:status)).to contain_exactly(204, 404)
+    end
+
+    it "does not duplicate an existing convention-status entry contributed by extras" do
+      result = make_render_result(render_sites: [])
+      response = builder.build(
+        route("GET"),
+        classification: classification(:undeterminable, render_result: result),
+        view_schema: nil,
+        extra_sites: [extra_site(200), extra_site(404)]
+      )
+
+      expect(response.entries.map(&:status)).to contain_exactly(200, 404)
+      # The 200 from the extra (with a schema) is preserved, not overwritten.
+      happy = response.entries.find { |entry| entry.status == 200 }
+      expect(happy.body).to eq(
+        "type" => "object", "properties" => { "error" => { "type" => "string" } }
+      )
+    end
+
+    it "uses 201 for POST and 204 for DELETE conventions" do
+      result = make_render_result(render_sites: [])
+      post = builder.build(
+        route("POST"),
+        classification: classification(:undeterminable, render_result: result),
+        extra_sites: [extra_site(422)]
+      )
+      expect(post.entries.map(&:status)).to contain_exactly(201, 422)
+
+      delete = builder.build(
+        route("DELETE"),
+        classification: classification(:undeterminable, render_result: result),
+        extra_sites: [extra_site(404)]
+      )
+      expect(delete.entries.map(&:status)).to contain_exactly(204, 404)
+    end
+  end
+
   describe "head responses (US2)" do
     it "documents no body for a head response" do
       result = make_render_result(explicit_status: 200, head: true)

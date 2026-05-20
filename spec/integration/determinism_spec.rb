@@ -149,6 +149,19 @@ RSpec.describe "Deterministic output", :rails_app do
     FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
   end
 
+  it "produces a stable implicit-200-with-error-extras response across runs (feature 017)" do
+    responses = Array.new(2) do
+      config = RailsOpenapiGenerator::Configuration.new
+      config.output_path = File.expand_path("../../tmp/spec/det_implicit_200.json", __dir__)
+      RailsOpenapiGenerator::Generator.new(config).document["paths"]["/api/silent_with_rescue"]["get"]["responses"]
+    end
+
+    expect(responses[0]).to eq(responses[1])
+    expect(responses[0].keys).to include("200")
+  ensure
+    FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
+  end
+
   it "produces stable resolved-partial sibling-key schemas across runs (feature 016)" do
     bodies = Array.new(2) do
       config = RailsOpenapiGenerator::Configuration.new

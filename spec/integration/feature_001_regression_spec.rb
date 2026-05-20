@@ -145,6 +145,18 @@ RSpec.describe "Feature 001 output is unchanged by response bodies", :rails_app 
     expect(per_page["schema"]).not_to have_key("items")
   end
 
+  it "leaves jbuilder-backed and inline-render endpoints byte-identical under feature 017 (SC-002)" do
+    # Feature 017's new branch fires only when render_result.render_sites is
+    # empty. api/users#index (jbuilder view) and api/users#post (inline
+    # `render json:`) both contribute render sites — their responses must
+    # match 0.16.0 exactly.
+    list = index["responses"]["200"]["content"]["application/json"]["schema"]
+    expect(list["type"]).to eq("array")
+
+    post = document["paths"]["/api/users"]["post"]["responses"]["201"]["content"]["application/json"]["schema"]
+    expect(post["properties"]).to include("id", "role", "active")
+  end
+
   it "leaves jbuilder-backed endpoints byte-identical under feature 016 (SC-004)" do
     # api/users#index and api/users#show don't use `json.<key> @c, partial:`
     # or `case`/`when`. Their response schemas must match 0.15.0 exactly —

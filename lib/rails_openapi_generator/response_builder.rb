@@ -124,7 +124,22 @@ module RailsOpenapiGenerator
       return html_only if html_only
 
       entries = entries_from_sites(sites, route)
+      ensure_happy_path_entry(entries, route, render_result) if render_result.render_sites.empty?
       Response.new(entries: entries, kind: :json)
+    end
+
+    # When the action source contributes no render site (no inline render,
+    # no head, no redirect, no resolvable view) but extras populated only
+    # error-status entries, document Rails' implicit empty response as a
+    # body-less entry at the HTTP-method convention status. Without this,
+    # the operation would document only the error statuses and lose its
+    # happy path entirely (feature 017).
+    def ensure_happy_path_entry(entries, route, render_result)
+      status = status_for(route, render_result)
+      return if entries.any? { |entry| entry.status == status }
+
+      entries << ResponseEntry.new(status: status)
+      entries.sort_by!(&:status)
     end
 
     # When every site is an HTML-template at the same status (no JSON
