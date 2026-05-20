@@ -80,4 +80,44 @@ RSpec.describe "Feature 001 output is unchanged by response bodies", :rails_app 
     expect(index["tags"]).to eq(["Api::UsersController"])
     expect(index).not_to have_key("x-redirects")
   end
+
+  it "leaves a single-render JSON endpoint byte-identical when multi-status detection is added (SC-005)" do
+    # api/users#index has exactly one happy render (via jbuilder view) and no
+    # error renders or guard helpers. Multi-status detection MUST emit the
+    # same single-entry response under '200' with the array schema, and not
+    # spuriously add a second entry.
+    responses = index["responses"]
+    expect(responses.keys).to eq(["200"])
+    expect(responses["200"]["content"]["application/json"]["schema"]["type"]).to eq("array")
+  end
+
+  it "leaves a redirect endpoint byte-identical when multi-status detection is added (FR-010)" do
+    # /api/redirects/create stays a single-entry 302 — multi-status applies
+    # only to JSON-shaped operations. Even if before_action contributes JSON
+    # entries, the redirect kind wins and no extra entries leak in.
+    redirect = document["paths"]["/api/redirects/create"]["post"]["responses"]
+    expect(redirect.keys).to eq(["302"])
+    expect(redirect["302"]).not_to have_key("content")
+  end
+
+  it "leaves a single-render jbuilder endpoint byte-identical under feature 011 (SC-004)" do
+    # api/users#index has exactly one happy render via its jbuilder view
+    # (no helper renders, no before_action renders). Feature 011's
+    # template-site detection must not add a second entry or change the
+    # body schema for it.
+    responses = index["responses"]
+    expect(responses.keys).to eq(["200"])
+    body = responses["200"]["content"]["application/json"]["schema"]
+    expect(body["type"]).to eq("array")
+  end
+
+  it "leaves a single-render HTML-page endpoint byte-identical under feature 011 (SC-004)" do
+    # api/pages#show is a pure HTML page (action body has no render; the
+    # view is resolved by classification). Feature 011 must keep it as a
+    # single-entry :html_page response with text/html content.
+    op = document["paths"]["/api/pages/{id}"]["get"]
+    expect(op["x-renders-html"]).to be(true)
+    content = op["responses"].values.first["content"]
+    expect(content.keys).to eq(["text/html"])
+  end
 end

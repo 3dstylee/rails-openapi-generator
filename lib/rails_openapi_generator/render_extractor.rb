@@ -3,16 +3,56 @@
 module RailsOpenapiGenerator
   # The result of inspecting an action body for inline response signals.
   #
+  # One `render json:`, `head`, or template-render call located somewhere
+  # in the reachable code (action body or, later, a helper / before_action
+  # body). `explicit_status` is the call's `status:` option / `head`
+  # argument when set, or `nil` for a status-less render (the HTTP-method
+  # convention is applied downstream in {ResponseBuilder}). `schema` is the
+  # OpenAPI schema derived from a literal `render json:` value, or `nil` for
+  # a non-literal value, a `head`, an unresolved template, or a template
+  # whose view does not exist.
+  #
+  # `source` is `:action`, `:helper`, or `:before_action` — kept for
+  # diagnostics; not emitted to the document.
+  #
+  # `template_name` (feature 011) is the template path for an unresolved
+  # `render "path"` / `render :symbol` / `render template:` / `render action:`
+  # call; nil for JSON-render and head sites and for template sites already
+  # resolved by the Generator. `format_hint` (feature 011) is the literal
+  # value of the render's `formats:` option (Symbol or non-empty
+  # Array<Symbol>); nil when the option is absent or non-literal.
+  # `kind_hint` (feature 011) is `:html_page` when a resolved template site
+  # points at an HTML view; nil otherwise.
+  RenderSite = Struct.new(
+    :explicit_status, :schema, :head, :source,
+    :template_name, :format_hint, :kind_hint,
+    keyword_init: true
+  ) do
+    def head?
+      head
+    end
+
+    def template?
+      !template_name.nil?
+    end
+
+    def html_template?
+      kind_hint == :html_page
+    end
+  end
+
   # `renders_json` is true when the action contains a happy-path `render json:`.
   # `explicit_status` is the last happy-path (2xx/3xx) status the action sets
   # via `head` or `render status:`, or nil. `head` is true when the action's
   # success path is a `head` call (a body-less response). `redirect_status` is
   # the last 3xx status from a `redirect_to` / `redirect_back` /
   # `redirect_back_or_to` call (default 302 when no `status:` option is set),
-  # or nil when no redirect is present.
+  # or nil when no redirect is present. `render_sites` is every `render json:`
+  # and `head` reachable from the action — used by {ResponseBuilder} to build
+  # the multi-status response set (feature 010).
   RenderResult = Struct.new(
     :schema, :renders_json, :explicit_status, :head, :file_download, :html_inline, :template,
-    :redirect_status,
+    :redirect_status, :render_sites,
     keyword_init: true
   ) do
     def head?
@@ -64,8 +104,17 @@ module RailsOpenapiGenerator
         file_download: file_download?(node),
         html_inline: renders.any? { |render| render[:options].key?(:html) },
         template: template_name(renders),
-        redirect_status: redirect_status(node)
+        redirect_status: redirect_status(node),
+        render_sites: render_sites(node, renders, source: :action)
       )
+    end
+
+    # Collects render-sites from an extra body (e.g. a helper method or a
+    # `before_action` callback) and returns them tagged with `source`.
+    def collect_sites(node, source:)
+      return [] if node.nil?
+
+      render_sites(node, collect_renders(node), source: source)
     end
 
     private
@@ -73,8 +122,74 @@ module RailsOpenapiGenerator
     def empty_result
       RenderResult.new(
         schema: nil, renders_json: false, explicit_status: nil, head: false,
-        file_download: false, html_inline: false, template: nil, redirect_status: nil
+        file_download: false, html_inline: false, template: nil, redirect_status: nil,
+        render_sites: []
       )
+    end
+
+    # Every `render json:`, `head`, and template-render call in `node`,
+    # returned as a list of {RenderSite}s in source order. Renders carrying
+    # a non-2xx/3xx status are kept (the caller decides what to do with
+    # them per status); renders whose `status:` symbol is unmapped are
+    # dropped (R7). Template sites are emitted unresolved — the Generator
+    # resolves them to a view at orchestration time (feature 011 R4).
+    def render_sites(node, renders, source:)
+      json_sites = renders.filter_map { |render| json_site(render, source) }
+      template_sites = renders.filter_map { |render| template_site(render, source) }
+      head_sites = head_sites(node, source)
+      json_sites + template_sites + head_sites
+    end
+
+    def json_site(render, source)
+      return nil unless render[:options].key?(:json)
+
+      raw_status = render[:options][:status]
+      explicit = raw_status.nil? ? nil : status_code(raw_status)
+      return nil if raw_status && explicit.nil? # unmapped symbol → drop site
+
+      value = render[:options][:json]
+      schema = value.equal?(LiteralEvaluator::UNRESOLVED) ? nil : LiteralEvaluator.schema_for(value)
+      RenderSite.new(explicit_status: explicit, schema: schema, head: false, source: source)
+    end
+
+    # An unresolved template-render site: `render "path"`, `render :symbol`,
+    # `render template: "..."`, or `render action: :name`. Excludes renders
+    # that carry a `:json` or `:html` option (those are handled elsewhere).
+    def template_site(render, source)
+      options = render[:options]
+      return nil if options.key?(:json) || options.key?(:html)
+
+      name = explicit_template_name(render)
+      return nil if name.nil?
+
+      raw_status = options[:status]
+      explicit = raw_status.nil? ? nil : status_code(raw_status)
+      return nil if raw_status && explicit.nil? # unmapped status symbol → drop
+
+      RenderSite.new(
+        explicit_status: explicit, schema: nil, head: false, source: source,
+        template_name: name, format_hint: format_hint_of(options)
+      )
+    end
+
+    # The literal value of `options[:formats]`, normalized to a Symbol or a
+    # non-empty Array<Symbol>; nil otherwise (non-literal → "no hint").
+    # `LiteralEvaluator` evaluates Symbol literals to Strings, so we accept
+    # both String and Symbol and normalize via `to_sym`.
+    def format_hint_of(options)
+      value = options[:formats]
+      return nil if value.equal?(LiteralEvaluator::UNRESOLVED) || value.nil?
+      return value.to_sym if value.is_a?(String) || value.is_a?(Symbol)
+      return nil unless value.is_a?(Array)
+
+      symbols = value.filter_map { |element| element.to_sym if element.is_a?(String) || element.is_a?(Symbol) }
+      symbols.empty? ? nil : symbols
+    end
+
+    def head_sites(node, source)
+      render_calls(node, "head").map do |args|
+        RenderSite.new(explicit_status: head_status(args), schema: nil, head: true, source: source)
+      end
     end
 
     def schema_for(json_value)

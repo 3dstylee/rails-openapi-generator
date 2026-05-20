@@ -8,11 +8,31 @@ RSpec.describe RailsOpenapiGenerator::ResponseBuilder do
   end
 
   def make_render_result(schema: nil, renders_json: false, explicit_status: nil, head: false,
-                         redirect_status: nil)
+                         redirect_status: nil, render_sites: nil)
+    sites = render_sites || derive_sites(schema, renders_json, explicit_status, head)
     RailsOpenapiGenerator::RenderResult.new(
       schema: schema, renders_json: renders_json, explicit_status: explicit_status, head: head,
-      file_download: false, html_inline: false, template: nil, redirect_status: redirect_status
+      file_download: false, html_inline: false, template: nil, redirect_status: redirect_status,
+      render_sites: sites
     )
+  end
+
+  # Reconstructs the {RenderSite}s the {RenderExtractor} would have produced
+  # so unit specs that pre-date feature 010 keep working without restating
+  # every render site by hand.
+  def derive_sites(schema, renders_json, explicit_status, head)
+    sites = []
+    if renders_json
+      sites << RailsOpenapiGenerator::RenderSite.new(
+        explicit_status: explicit_status, schema: schema, head: false, source: :action
+      )
+    end
+    if head
+      sites << RailsOpenapiGenerator::RenderSite.new(
+        explicit_status: explicit_status || 200, schema: nil, head: true, source: :action
+      )
+    end
+    sites
   end
 
   def classification(kind, render_result: make_render_result, template_name: nil)

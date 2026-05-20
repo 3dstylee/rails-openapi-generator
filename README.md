@@ -147,6 +147,36 @@ the call's 3xx status (`302` by default, or the `status:` option — e.g.
 renders, file downloads, inline HTML, and resolvable view templates continue to
 take precedence over a redirect signal.
 
+For JSON operations, **every** `render json:` and `head` call reachable from
+the action is documented — not only the happy path. An action with both a
+happy `render json: ...` and a guard
+`render json: { ... }, status: :unprocessable_entity` produces two response
+entries (e.g. `200` and `422`), each with the schema of the corresponding
+render (or no body when the render's argument is a non-literal). Renders
+reached through helper methods (including methods in concerns mixed into the
+controller) and through `before_action` callbacks contribute to the response
+set the same way. `before_action` filters with a literal `only: [...]` /
+`except: [...]` are honored; non-literal conditionals fall back to "applies
+to every action in this controller". `rescue_from` handlers and statuses
+implied by exception-raising calls (Pundit `authorize`, ActiveRecord
+`find!`) are out of scope.
+
+When two renders share a status with distinct literal shapes, the entry's
+body becomes an OpenAPI `oneOf` of the unique schemas, sorted by canonical
+JSON for determinism.
+
+Template renders — `render "path/to/template"`, `render :symbol`,
+`render template:`, `render action:` — are also collected from helpers and
+`before_action` callbacks. An explicit `formats:` option chooses which view
+to resolve: `formats: :json` looks up `.json.jbuilder`, `formats: :html`
+looks up `.html.*`, and a literal array tries each in order. When the
+option is absent or non-literal, the default "prefer JSON over HTML"
+lookup applies. When the requested view does not exist, the operation gets
+a body-less entry under the status (the status is known, the body is not).
+An action whose only renders are HTML-template renders at a single status
+classifies as an HTML page (single-entry, `text/html`) — even when the
+render lives in a helper.
+
 Endpoints whose response shape cannot be determined (non-literal `render json:`,
 serializer-based responses, unlocatable partials) still get a valid success
 response with no body schema, and are named in the run report. No controller

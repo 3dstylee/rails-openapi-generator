@@ -104,6 +104,71 @@ RSpec.describe RailsOpenapiGenerator::RenderExtractor do
     end
   end
 
+  describe "template-render sites (feature 011)" do
+    def template_site(source)
+      result = extract(source)
+      result.render_sites.find(&:template?)
+    end
+
+    it "emits a template site for a String positional render" do
+      site = template_site('render "api/users/show"')
+      expect(site).not_to be_nil
+      expect(site.template_name).to eq("api/users/show")
+      expect(site.format_hint).to be_nil
+      expect(site.head?).to be(false)
+    end
+
+    it "emits a template site for a Symbol positional render" do
+      site = template_site("render :edit")
+      expect(site.template_name).to eq("edit")
+    end
+
+    it "emits a template site for render template:" do
+      site = template_site('render template: "api/users/show"')
+      expect(site.template_name).to eq("api/users/show")
+    end
+
+    it "emits a template site for render action:" do
+      site = template_site("render action: :show")
+      expect(site.template_name).to eq("show")
+    end
+
+    it "records a literal :json format hint" do
+      site = template_site('render "api/users/show", formats: :json')
+      expect(site.format_hint).to eq(:json)
+    end
+
+    it "records a literal :html format hint" do
+      site = template_site('render "api/users/show", formats: :html')
+      expect(site.format_hint).to eq(:html)
+    end
+
+    it "records a literal array format hint" do
+      site = template_site('render "api/users/show", formats: [:json, :html]')
+      expect(site.format_hint).to eq(%i[json html])
+    end
+
+    it "ignores a non-literal format hint" do
+      site = template_site('render "api/users/show", formats: dynamic_format')
+      expect(site.format_hint).to be_nil
+    end
+
+    it "uses the explicit status from a template render" do
+      site = template_site('render "api/users/show", status: :created')
+      expect(site.explicit_status).to eq(201)
+    end
+
+    it "does not emit a template site for render json:" do
+      sites = extract("render json: { id: 1 }").render_sites
+      expect(sites.none?(&:template?)).to be(true)
+    end
+
+    it "does not emit a template site for render html:" do
+      sites = extract('render html: "<p>hi</p>".html_safe').render_sites
+      expect(sites.none?(&:template?)).to be(true)
+    end
+  end
+
   describe "redirect status" do
     it "is 302 for a bare redirect_to" do
       expect(extract('redirect_to "/x"').redirect_status).to eq(302)

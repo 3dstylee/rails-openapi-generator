@@ -19,11 +19,16 @@ RSpec.describe "Generate an OpenAPI document for all endpoints", :rails_app do
 
     expect(document["paths"].keys).to contain_exactly(
       "/api/inputs", "/api/inputs/{id}", "/api/inputs/upload",
+      "/api/multi_status/destroy/{id}", "/api/multi_status/dup_distinct",
+      "/api/multi_status/dup_same", "/api/multi_status/head_and_render",
+      "/api/multi_status/show/{id}", "/api/multi_status/update",
       "/api/orphan", "/api/pages/{id}", "/api/pages/{id}/download",
       "/api/posts",
       "/api/redirects/bounce", "/api/redirects/create", "/api/redirects/mixed",
       "/api/redirects/old_path", "/api/redirects/transfer",
       "/api/reports/chained", "/api/reports/cyclic",
+      "/api/template_renders/as_html", "/api/template_renders/destroy/{id}",
+      "/api/template_renders/missing", "/api/template_renders/update",
       "/api/reports/single", "/api/reports/via_concern",
       "/api/statuses/guarded", "/api/statuses/make", "/api/statuses/mark",
       "/api/statuses/unmark", "/api/users", "/api/users/{id}"

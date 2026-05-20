@@ -20,6 +20,16 @@ Rails.application.routes.draw do
     get "redirects/old_path", to: "redirects#old_path"
     post "redirects/bounce", to: "redirects#bounce"
     post "redirects/mixed", to: "redirects#mixed"
+    patch "multi_status/update", to: "multi_status#update"
+    post "multi_status/dup_same", to: "multi_status#dup_same"
+    post "multi_status/dup_distinct", to: "multi_status#dup_distinct"
+    post "multi_status/head_and_render", to: "multi_status#head_and_render"
+    get "multi_status/show/:id", to: "multi_status#show"
+    delete "multi_status/destroy/:id", to: "multi_status#destroy"
+    put "template_renders/update", to: "template_renders#update"
+    get "template_renders/as_html", to: "template_renders#as_html"
+    get "template_renders/missing", to: "template_renders#missing"
+    delete "template_renders/destroy/:id", to: "template_renders#destroy"
     post "inputs/upload", to: "inputs#upload"
     resources :inputs, only: %i[show create]
   end

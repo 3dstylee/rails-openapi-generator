@@ -30,8 +30,10 @@ RSpec.describe "Explicit success status codes", :rails_app do
       expect(operation("/api/statuses/make")["responses"].keys).to eq(["201"])
     end
 
-    it "ignores an error-status guard and uses the happy head status" do
-      expect(operation("/api/statuses/guarded")["responses"].keys).to eq(["200"])
+    it "documents both the error guard and the happy head status (feature 010 multi-status)" do
+      # The action does `render json: …, status: :unprocessable_entity` on a
+      # guard path and `head :ok` on success. Feature 010 documents both.
+      expect(operation("/api/statuses/guarded")["responses"].keys).to contain_exactly("200", "422")
     end
   end
 
@@ -49,9 +51,11 @@ RSpec.describe "Explicit success status codes", :rails_app do
   end
 
   describe "HTTP-method convention fallback (US3)" do
-    it "keeps the convention for an action with no explicit status" do
-      # POST /api/users (create) sets no explicit status -> POST convention 201.
-      expect(document["paths"]["/api/users"]["post"]["responses"].keys).to eq(["201"])
+    it "keeps the convention for an action with no explicit status on the happy render" do
+      # POST /api/users (create) sets no explicit status on the happy render →
+      # POST convention 201 is picked up; the guard render's 422 is also
+      # documented now that multi-status responses are supported (feature 010).
+      expect(document["paths"]["/api/users"]["post"]["responses"].keys).to contain_exactly("201", "422")
     end
 
     it "keeps the convention for a GET action with no explicit status" do

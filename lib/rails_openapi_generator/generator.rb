@@ -45,6 +45,7 @@ module RailsOpenapiGenerator
       )
       @wrapper_resolver = WrapperDownloadResolver.new(walker: @walker)
       @implicit_scanner = ImplicitParamScanner.new(walker: @walker)
+      @before_action_resolver = BeforeActionResolver.new(method_resolver: @method_resolver)
       @classifier       = RenderClassifier.new(view_locator: @view_locator, wrapper_resolver: @wrapper_resolver)
       @response_builder = ResponseBuilder.new
       @operation_builder = OperationBuilder.new
@@ -93,19 +94,74 @@ module RailsOpenapiGenerator
     end
 
     def build_response(route, action_source, controller_class)
-      render_result  = @render_extractor.extract(action_source)
+      render_result = @render_extractor.extract(action_source)
+      resolve_template_sites!(render_result.render_sites, route)
       classification = @classifier.classify(
         route, render_result,
         controller_class: controller_class,
         action_node: action_source&.method_node
       )
       view_schema    = classification.jbuilder_file ? @jbuilder_parser.parse(classification.jbuilder_file) : nil
-      response       = @response_builder.build(route, classification: classification, view_schema: view_schema)
+      extra_sites    = collect_extra_sites(route, controller_class, action_source)
+      resolve_template_sites!(extra_sites, route)
+      response = @response_builder.build(
+        route, classification: classification, view_schema: view_schema, extra_sites: extra_sites
+      )
 
       if response.undeterminable?
         @report.warn("#{route.http_method} #{route.path}: response shape could not be determined")
       end
       response
+    end
+
+    # Resolves every unresolved template-render site in `sites` (mutates
+    # each in place): looks up the view via {ViewLocator} with the site's
+    # `format_hint`, then either parses the jbuilder (JSON site with
+    # schema), marks the site as an HTML-template site, or leaves it as a
+    # body-less JSON site (status known, body unknown).
+    def resolve_template_sites!(sites, route)
+      Array(sites).each do |site|
+        next unless site&.template?
+
+        view = @view_locator.locate_view(route, site.template_name, format_hint: site.format_hint)
+        case view&.kind
+        when :json
+          site.schema = @jbuilder_parser.parse(view.path)
+        when :html
+          site.kind_hint = :html_page
+        end
+        site.template_name = nil
+        site.format_hint = nil
+      end
+    end
+
+    # Render sites reached through helper methods called from the action,
+    # and through `before_action` callbacks applicable to this action.
+    # JSON-only — non-JSON kinds (redirect / file / html) are unchanged
+    # by feature 010 and ignore extras.
+    def collect_extra_sites(route, controller_class, action_source)
+      action_node = action_source&.method_node
+      return [] if action_node.nil? || controller_class.nil?
+
+      helper_sites = helper_render_sites(controller_class, action_node)
+      callback_sites = before_action_render_sites(controller_class, route.action)
+      helper_sites + callback_sites
+    end
+
+    def helper_render_sites(controller_class, action_node)
+      # `reachable_bodies` returns [action_node, ...helper_bodies]. Skip
+      # the first (already collected by RenderExtractor#extract).
+      bodies = @walker.reachable_bodies(controller_class, action_node).drop(1)
+      bodies.flat_map { |body| @render_extractor.collect_sites(body, source: :helper) }
+    end
+
+    def before_action_render_sites(controller_class, action_name)
+      callbacks = @before_action_resolver.resolve(controller_class)
+      applicable = callbacks.select { |callback| callback.applies_to?(action_name) }
+      applicable.flat_map do |callback|
+        bodies = @walker.reachable_bodies(controller_class, callback.method_node)
+        bodies.flat_map { |body| @render_extractor.collect_sites(body, source: :before_action) }
+      end
     end
 
     def count_kind(response)

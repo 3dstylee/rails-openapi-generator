@@ -1,22 +1,46 @@
 # frozen_string_literal: true
 
 module RailsOpenapiGenerator
-  # The success ("happy path") response of one operation: a status code, an
-  # optional body schema, a description, and a kind.
+  # One status entry of an operation's response set: a status code and an
+  # optional body schema. The body is nil for a body-less entry (head, no-
+  # known-body, or non-JSON kind). It may be an `{"oneOf": [...]}` schema
+  # for a multi-shape union (FR-004).
+  ResponseEntry = Struct.new(:status, :body, keyword_init: true)
+
+  # The success response of one operation, as an ordered list of status
+  # entries (`entries`). A single-status operation has a one-element list
+  # and emits byte-identically to pre-`0.9.0` output. A multi-status JSON
+  # operation has one entry per unique status the action can produce.
   #
-  # `kind` is `:json`, `:html_page`, `:file_download`, or `:redirect`. `body`
-  # is an OpenAPI schema Hash, or nil for a 204 / no-content response, a
-  # non-JSON response, and an undeterminable JSON response. `undeterminable`
-  # (meaningful only for `:json`) marks a JSON response whose shape could not
-  # be determined. `page_reference` carries the HTML template name for an
-  # `:html_page`. A `:redirect` response carries a 3xx status and no body.
+  # `kind` is `:json`, `:html_page`, `:file_download`, or `:redirect`.
+  # `undeterminable` (meaningful only for `:json`) marks the fallback case
+  # where no render site contributes — the entry list still has one entry
+  # under the HTTP-method convention, but the body is unknown.
+  # `page_reference` carries the HTML template name for an `:html_page`.
+  # `entries` deliberately shadows `Struct#entries` (an alias of `to_a`);
+  # the Struct method is unused on this type, and renaming would obscure
+  # the intent of the field.
   Response = Struct.new(
-    :status, :body, :description, :undeterminable, :kind, :page_reference,
+    :entries, # rubocop:disable Lint/StructNewOverride
+    :description, :undeterminable, :kind, :page_reference,
     keyword_init: true
   ) do
-    def initialize(status:, body: nil, description: "Successful response",
+    def initialize(entries: nil, status: nil, body: nil,
+                   description: "Successful response",
                    undeterminable: false, kind: :json, page_reference: nil)
-      super
+      entries ||= [ResponseEntry.new(status: status, body: body)]
+      super(entries: entries, description: description,
+            undeterminable: undeterminable, kind: kind, page_reference: page_reference)
+    end
+
+    # Convenience accessor — the first (and, for single-entry kinds, only)
+    # entry's status. Multi-status JSON callers should iterate `entries`.
+    def status
+      entries.first&.status
+    end
+
+    def body
+      entries.first&.body
     end
 
     def undeterminable?
