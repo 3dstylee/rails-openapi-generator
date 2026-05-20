@@ -74,6 +74,8 @@ module RailsOpenapiGenerator
         block.call(call)
       elsif %i[if unless elsif if_mod unless_mod].include?(node[0])
         conditional_bodies(node).each { |body| each_json_call(body, &block) }
+      elsif node[0] == :case
+        case_branch_bodies(node).each { |body| each_json_call(body, &block) }
       end
     end
 
@@ -88,6 +90,26 @@ module RailsOpenapiGenerator
         bodies + (tail.is_a?(Array) ? conditional_bodies(tail) : [])
       when :else
         [Array(node[1])]
+      else
+        []
+      end
+    end
+
+    # Walks the when/else chain of a [:case, expr, chain] node and returns
+    # every branch body. Bodies from every `when` and the optional `else`
+    # are unioned, matching the existing if/elsif/else posture.
+    def case_branch_bodies(node)
+      walk_case_chain(node[2])
+    end
+
+    def walk_case_chain(chain)
+      return [] unless chain.is_a?(Array)
+
+      case chain[0]
+      when :when
+        [Array(chain[2])] + walk_case_chain(chain[3])
+      when :else
+        [Array(chain[1])]
       else
         []
       end
@@ -155,9 +177,36 @@ module RailsOpenapiGenerator
           block_schema = build_schema(block_statements(call[:block]), seen)
           # A block with a positional argument iterates a collection → array.
           call[:args].empty? ? block_schema : { "type" => "array", "items" => block_schema }
+        elsif hash_partial_name(call[:args])
+          partial_property_schema(call, seen)
         else
           value_schema(call[:args].first)
         end
+    end
+
+    # Schema for a `json.<key> [collection,] partial: "name"` call. With a
+    # positional collection arg the key is an array of the partial; without
+    # one the partial schema is inlined directly.
+    def partial_property_schema(call, seen)
+      schema = partial_schema(call, seen) || permissive_object
+      positional_arg?(call[:args]) ? { "type" => "array", "items" => schema } : schema
+    end
+
+    def positional_arg?(args)
+      args.any? { |arg| !(arg.is_a?(Array) && arg[0] == :bare_assoc_hash) }
+    end
+
+    # Only matches the `partial:` keyword option. Unlike {#partial_name}, a
+    # bare positional String is not treated as a partial — `json.name "n"`
+    # is a literal value, not a partial reference.
+    def hash_partial_name(args)
+      args.each do |arg|
+        next unless arg.is_a?(Array) && arg[0] == :bare_assoc_hash
+
+        value = LiteralEvaluator.evaluate(arg)
+        return value[:partial] if value.is_a?(Hash) && value[:partial].is_a?(String)
+      end
+      nil
     end
 
     def extract_properties(properties, call)

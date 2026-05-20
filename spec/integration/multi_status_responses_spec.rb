@@ -111,8 +111,11 @@ RSpec.describe "Multi-status responses", :rails_app do
   end
 
   describe "warning channel" do
-    it "still emits 'response shape could not be determined' for an action with no signals" do
-      expect(report.warnings.join("\n")).to match(%r{/api/posts: response shape could not be determined})
+    # Feature 015: the warning no longer fires for actions with no
+    # signals (no render, no view, no extras). The operation is still
+    # documented as a body-less 200, but the warning is suppressed.
+    it "does NOT emit 'response shape could not be determined' for a no-signal action" do
+      expect(report.warnings.join("\n")).not_to match(%r{/api/posts: response shape could not be determined})
     end
   end
 

@@ -77,10 +77,11 @@ RSpec.describe "respond_to format blocks", :rails_app do
     it "is documented as if the respond_to block were absent (format.xml ignored)" do
       # The action's only signal is `format.xml`, which is unmapped in v1.
       # With no other render and no view at api/respond_to/unmapped.*,
-      # the operation falls back to undeterminable and the warning fires.
+      # the operation falls back to a body-less 200. Feature 015
+      # suppresses the warning for this case.
       responses = operation("/api/respond_to/unmapped")["responses"]
       expect(responses["200"]).not_to have_key("content")
-      expect(report.warnings.join("\n")).to match(%r{/api/respond_to/unmapped:})
+      expect(report.warnings.join("\n")).not_to match(%r{/api/respond_to/unmapped:})
     end
   end
 

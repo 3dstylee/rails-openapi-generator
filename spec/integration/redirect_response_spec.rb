@@ -78,9 +78,11 @@ RSpec.describe "Redirect responses", :rails_app do
       end
     end
 
-    it "still emits the warning for a genuinely undeterminable endpoint (no redirect, no render)" do
+    it "does NOT emit the warning for a no-signal endpoint (feature 015)" do
+      # Feature 015 suppresses the warning for actions with no static
+      # response signal — Rails returns an implicit empty response.
       expect(report.warnings.join("\n"))
-        .to match(%r{/api/posts: response shape could not be determined})
+        .not_to match(%r{/api/posts: response shape could not be determined})
     end
   end
 

@@ -144,4 +144,36 @@ RSpec.describe "Feature 001 output is unchanged by response bodies", :rails_app 
     expect(per_page["schema"]).not_to have_key("properties")
     expect(per_page["schema"]).not_to have_key("items")
   end
+
+  it "leaves jbuilder-backed endpoints byte-identical under feature 016 (SC-004)" do
+    # api/users#index and api/users#show don't use `json.<key> @c, partial:`
+    # or `case`/`when`. Their response schemas must match 0.15.0 exactly —
+    # feature 016's new walker paths fire only on the new AST shapes.
+    list = index["responses"]["200"]["content"]["application/json"]["schema"]
+    expect(list).to eq(
+      "type" => "array",
+      "items" => {
+        "type" => "object",
+        "properties" => {
+          "id" => {},
+          "name" => {},
+          "email" => {},
+          "role" => { "type" => "string" },
+          "profile" => { "type" => "object", "properties" => { "bio" => {} } }
+        }
+      }
+    )
+
+    show = document["paths"]["/api/users/{id}"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+    expect(show).to eq(
+      "type" => "object",
+      "properties" => {
+        "id" => {},
+        "name" => {},
+        "email" => {},
+        "role" => { "type" => "string" },
+        "profile" => { "type" => "object", "properties" => { "bio" => {} } }
+      }
+    )
+  end
 end

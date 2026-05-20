@@ -63,9 +63,13 @@ RSpec.describe RailsOpenapiGenerator::ResponseBuilder do
       expect(response).to be_undeterminable
     end
 
-    it "is undeterminable for an :undeterminable classification" do
+    it "is NOT undeterminable for an :undeterminable classification with no signals (feature 015)" do
+      # Feature 015 narrows the undeterminable predicate: a classification
+      # of :undeterminable with no render sites and no extras now emits a
+      # plain body-less response, not an undeterminable one. The warning
+      # gate (Response#undeterminable?) is the user-facing effect.
       response = builder.build(route("GET"), classification: classification(:undeterminable), view_schema: nil)
-      expect(response).to be_undeterminable
+      expect(response).not_to be_undeterminable
     end
   end
 

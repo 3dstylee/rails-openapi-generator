@@ -18,6 +18,8 @@ RSpec.describe "Generate an OpenAPI document for all endpoints", :rails_app do
     document = RailsOpenapiGenerator::Generator.new(configuration).document
 
     expect(document["paths"].keys).to contain_exactly(
+      "/api/activity_logs",
+      "/api/case_branches/show",
       "/api/constant_references/execute", "/api/constant_references/missing",
       "/api/constant_references/non_compatible", "/api/constant_references/pattern",
       "/api/constant_references/range",

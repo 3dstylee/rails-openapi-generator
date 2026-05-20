@@ -149,6 +149,37 @@ RSpec.describe "Deterministic output", :rails_app do
     FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
   end
 
+  it "produces stable resolved-partial sibling-key schemas across runs (feature 016)" do
+    bodies = Array.new(2) do
+      config = RailsOpenapiGenerator::Configuration.new
+      config.output_path = File.expand_path("../../tmp/spec/det_partials.json", __dir__)
+      RailsOpenapiGenerator::Generator.new(config)
+                                      .document["paths"]["/api/activity_logs"]["get"]["responses"]["200"]
+                                      .dig("content", "application/json", "schema")
+    end
+
+    expect(bodies[0]).to eq(bodies[1])
+    items = bodies[0]["properties"].values.map { |entry| entry["items"] }
+    expect(items.uniq.size).to eq(1)
+  ensure
+    FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
+  end
+
+  it "produces a stable case/when merge order across runs (feature 016)" do
+    bodies = Array.new(2) do
+      config = RailsOpenapiGenerator::Configuration.new
+      config.output_path = File.expand_path("../../tmp/spec/det_case.json", __dir__)
+      RailsOpenapiGenerator::Generator.new(config)
+                                      .document["paths"]["/api/case_branches/show"]["get"]["responses"]["200"]
+                                      .dig("content", "application/json", "schema", "properties").keys
+    end
+
+    expect(bodies[0]).to eq(bodies[1])
+    expect(bodies[0]).to eq(bodies[0].sort)
+  ensure
+    FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
+  end
+
   it "emits implicit parameters in a stable order across runs (FR-011)" do
     bodies = Array.new(2) do
       config = RailsOpenapiGenerator::Configuration.new

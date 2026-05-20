@@ -116,6 +116,13 @@ inspection of two sources:
   by Rails view conventions (`app/views/<controller>/<action>.json.jbuilder`).
   `json.array!` becomes an array schema, `json.partial!` is followed, nested
   `json.x do … end` blocks become nested objects.
+  `json.<key> @collection, partial: "name", as: :name` resolves the partial
+  recursively and emits `{type: array, items: <partial schema>}`; without a
+  positional collection arg (`json.user partial: "user"`) the partial schema
+  is inlined directly.
+  Branching templates merge into one schema: `if`/`elsif`/`else` and
+  `case`/`when`/`else` branches all union their properties (every branch
+  contributes; no attempt is made to choose between them).
 - **literal `render json:`** — an inline `render json: { … }` with literal
   values. A literal render takes precedence over a view template.
 
@@ -152,6 +159,18 @@ chain. Handlers whose method cannot be resolved (defined in a gem,
 for example) are silently skipped. Controllers without any
 `rescue_from` declarations on their entire ancestor chain emit
 byte-identical output to before the feature.
+
+Actions that produce no static response signal — no `render`, no
+`head`, no `redirect_to`, no `respond_to`, no resolvable view, and no
+contributing extras (helpers / `before_action` / `rescue_from`) — are
+documented as a body-less response at the HTTP-method convention
+status (200/201/204). The
+`"response shape could not be determined"` warning is **not** emitted
+for these actions; Rails returns an implicit empty response at
+runtime, so the documentation matches reality. (Trade-off: serializer-
+based responses (Blueprinter, AMS) also fall through this path and
+no longer fire the warning. Track serializer endpoints by other means
+if you rely on the warning.)
 
 An action whose success path is `redirect_to` (or `redirect_back` /
 `redirect_back_or_to`) is documented as a redirect: the response is filed under

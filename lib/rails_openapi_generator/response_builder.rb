@@ -113,10 +113,12 @@ module RailsOpenapiGenerator
     def undeterminable_response(route, render_result, extra_sites)
       sites = Array(render_result.render_sites) + Array(extra_sites)
 
-      if sites.empty?
-        empty = empty_body_path?(render_result)
-        return Response.new(status: status_for(route, render_result), undeterminable: !empty)
-      end
+      # No render sites and no extras: the action falls through to
+      # Rails' implicit empty response. Document a body-less entry at
+      # the HTTP-method convention status, no longer marked
+      # `undeterminable` and no longer triggering the
+      # "response shape could not be determined" warning (feature 015).
+      return Response.new(status: status_for(route, render_result)) if sites.empty?
 
       html_only = html_template_only_response(route, sites)
       return html_only if html_only

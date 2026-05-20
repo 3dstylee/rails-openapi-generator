@@ -3,6 +3,55 @@
 All notable changes to this gem are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.16.0] - 2026-05-20
+
+### Added
+
+- jbuilder parser now recovers the schema shape from two more
+  template patterns that previously degraded to a permissive `{}`:
+  - `json.<key> @collection, partial: "name", as: :name` resolves
+    the partial recursively and emits
+    `{type: array, items: <partial schema>}`. The single-object
+    form (`json.user partial: "user"`) inlines the partial's
+    schema directly. The existing cycle guard prevents infinite
+    recursion if a partial refers back to its own template. When a
+    block is given alongside `partial:`, the block wins (matches
+    jbuilder's runtime semantics).
+  - `case` / `when` / `else` branches now merge into one schema
+    the same way `if` / `elsif` / `else` already does — every
+    branch's properties are unioned (last-wins for duplicate
+    keys, all unique keys preserved). Templates without these
+    shapes emit byte-identical schemas to `0.15.0`.
+
+## [0.15.0] - 2026-05-20
+
+### Changed
+
+- The `"<METHOD> <PATH>: response shape could not be determined"`
+  warning is no longer emitted for controller actions that produce
+  no static response signal — no `render`, no `head`, no
+  `redirect_to`, no `respond_to`, no resolvable view template, and
+  no contributing render sites from helpers / `before_action` /
+  `rescue_from`. Rails returns an implicit empty response at
+  runtime for these actions, so the warning was firing on noise
+  rather than on actionable issues.
+- The OpenAPI document output for these operations is unchanged
+  (still a body-less entry at the HTTP-method convention status —
+  200 / 201 / 204). The internal `Response#undeterminable?`
+  predicate now returns `false` for the no-signal case; the
+  Generator's warning emit is gated on that predicate, so the
+  warning naturally stops firing.
+
+### Trade-off
+
+- Serializer-based responses (Blueprinter, ActiveModelSerializer,
+  etc.) fall through the same path because the generator cannot
+  see their bodies statically. They previously fired the warning;
+  they now don't. Users who rely on the warning to spot
+  serializer gaps should track those endpoints by other means
+  (e.g. a per-controller convention). A future feature can add
+  explicit serializer detection if needed.
+
 ## [0.14.0] - 2026-05-20
 
 ### Added

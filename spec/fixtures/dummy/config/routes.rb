@@ -48,6 +48,8 @@ Rails.application.routes.draw do
     post "nested_params/non_hash_block", to: "nested_params#non_hash_block"
     get "rescued_resources/:id", to: "rescued_resources#show"
     get "rescued_resources_with_view", to: "rescued_resources_with_view#index"
+    get "activity_logs", to: "activity_logs#index"
+    get "case_branches/show", to: "case_branches#show"
     post "inputs/upload", to: "inputs#upload"
     resources :inputs, only: %i[show create]
   end
