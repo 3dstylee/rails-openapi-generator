@@ -79,6 +79,27 @@ RSpec.describe RailsOpenapiGenerator::DocumentBuilder do
     expect(document["paths"]["/users"]["get"]).not_to have_key("tags")
   end
 
+  describe "redirect responses" do
+    let(:redirect) do
+      endpoint(
+        http_method: "POST", path: "/things",
+        response: RailsOpenapiGenerator::Response.new(status: 302, kind: :redirect)
+      )
+    end
+    let(:operation) { described_class.new(configuration).build([redirect])["paths"]["/things"]["post"] }
+
+    it "emits the response under the redirect status with no content (description only)" do
+      expect(operation["responses"].keys).to eq(["302"])
+      expect(operation["responses"]["302"]).to eq("description" => "Successful response")
+    end
+
+    it "adds no vendor extension for a redirect response" do
+      expect(operation).not_to have_key("x-renders-html")
+      expect(operation).not_to have_key("x-sends-file")
+      expect(operation).not_to have_key("x-redirects")
+    end
+  end
+
   it "renders summary, description, parameters, and requestBody when present" do
     parameter = RailsOpenapiGenerator::Parameter.new(
       name: "id", location: :path, required: true, schema: { "type" => "integer" }

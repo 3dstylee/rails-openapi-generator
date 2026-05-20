@@ -58,6 +58,8 @@ module RailsOpenapiGenerator
         reference ? "_Renders an HTML page (`#{reference}`)._" : "_Renders an HTML page._"
       when :file_download
         "_Sends a file download._"
+      when :redirect
+        "_Redirects to another URL._"
       end
     end
 

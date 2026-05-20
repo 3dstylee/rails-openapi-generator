@@ -104,6 +104,56 @@ RSpec.describe RailsOpenapiGenerator::RenderExtractor do
     end
   end
 
+  describe "redirect status" do
+    it "is 302 for a bare redirect_to" do
+      expect(extract('redirect_to "/x"').redirect_status).to eq(302)
+    end
+
+    it "honors an explicit :see_other status" do
+      expect(extract('redirect_to "/x", status: :see_other').redirect_status).to eq(303)
+    end
+
+    it "honors an explicit :moved_permanently status" do
+      expect(extract('redirect_to "/x", status: :moved_permanently').redirect_status).to eq(301)
+    end
+
+    it "honors an explicit integer 301 status" do
+      expect(extract('redirect_to "/x", status: 301').redirect_status).to eq(301)
+    end
+
+    it "detects redirect_back" do
+      expect(extract('redirect_back fallback_location: "/x"').redirect_status).to eq(302)
+    end
+
+    it "detects redirect_back_or_to" do
+      expect(extract('redirect_back_or_to "/x"').redirect_status).to eq(302)
+    end
+
+    it "is nil when the status: option resolves to a non-3xx code" do
+      expect(extract('redirect_to "/x", status: :unprocessable_entity').redirect_status).to be_nil
+    end
+
+    it "falls back to 302 when the status: symbol is unknown" do
+      expect(extract('redirect_to "/x", status: :totally_made_up').redirect_status).to eq(302)
+    end
+
+    it "picks the last happy redirect when multiple are present" do
+      result = extract(<<~RUBY)
+        redirect_to "/a"
+        redirect_to "/b", status: :see_other
+      RUBY
+      expect(result.redirect_status).to eq(303)
+    end
+
+    it "is nil when the action has no redirect call" do
+      expect(extract("render json: { id: 1 }").redirect_status).to be_nil
+    end
+
+    it "is nil for an empty action source" do
+      expect(described_class.new.extract(nil).redirect_status).to be_nil
+    end
+  end
+
   describe "non-JSON signals" do
     it "detects a send_file call" do
       expect(extract('send_file "/tmp/report.pdf"').file_download).to be(true)

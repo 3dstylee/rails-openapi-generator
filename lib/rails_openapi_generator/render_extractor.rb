@@ -6,9 +6,13 @@ module RailsOpenapiGenerator
   # `renders_json` is true when the action contains a happy-path `render json:`.
   # `explicit_status` is the last happy-path (2xx/3xx) status the action sets
   # via `head` or `render status:`, or nil. `head` is true when the action's
-  # success path is a `head` call (a body-less response).
+  # success path is a `head` call (a body-less response). `redirect_status` is
+  # the last 3xx status from a `redirect_to` / `redirect_back` /
+  # `redirect_back_or_to` call (default 302 when no `status:` option is set),
+  # or nil when no redirect is present.
   RenderResult = Struct.new(
     :schema, :renders_json, :explicit_status, :head, :file_download, :html_inline, :template,
+    :redirect_status,
     keyword_init: true
   ) do
     def head?
@@ -23,6 +27,9 @@ module RailsOpenapiGenerator
   # (4xx/5xx) are ignored for the JSON value and the explicit status.
   class RenderExtractor
     HAPPY_STATUS = (200..399)
+    REDIRECT_STATUS = (300..399)
+    REDIRECT_METHODS = %w[redirect_to redirect_back redirect_back_or_to].freeze
+    DEFAULT_REDIRECT_STATUS = 302
     # Sentinel meaning "no happy-path `render json:` was found".
     NONE = :__rog_no_render__
 
@@ -56,7 +63,8 @@ module RailsOpenapiGenerator
         head: happy_head?(node),
         file_download: file_download?(node),
         html_inline: renders.any? { |render| render[:options].key?(:html) },
-        template: template_name(renders)
+        template: template_name(renders),
+        redirect_status: redirect_status(node)
       )
     end
 
@@ -65,7 +73,7 @@ module RailsOpenapiGenerator
     def empty_result
       RenderResult.new(
         schema: nil, renders_json: false, explicit_status: nil, head: false,
-        file_download: false, html_inline: false, template: nil
+        file_download: false, html_inline: false, template: nil, redirect_status: nil
       )
     end
 
@@ -158,6 +166,32 @@ module RailsOpenapiGenerator
     # True when the action has a `head` call with a happy-path (2xx/3xx) status.
     def happy_head?(node)
       head_status_codes(node).any? { |code| HAPPY_STATUS.cover?(code) }
+    end
+
+    # The last 3xx status from a `redirect_to` / `redirect_back` /
+    # `redirect_back_or_to` call, or nil when no such redirect is present.
+    # A redirect call with no `status:` option defaults to 302; one whose
+    # symbol is unmapped also defaults to 302; one whose `status:` resolves
+    # to a non-3xx code is ignored (treated as not a redirect signal).
+    def redirect_status(node)
+      codes = REDIRECT_METHODS.flat_map { |name| redirect_codes(node, name) }
+      codes.select { |code| REDIRECT_STATUS.cover?(code) }.last
+    end
+
+    def redirect_codes(node, name)
+      render_calls(node, name).map { |args| redirect_status_from_args(args) }
+    end
+
+    def redirect_status_from_args(args)
+      args.each do |arg|
+        next unless arg.is_a?(Array) && arg[0] == :bare_assoc_hash
+
+        options = LiteralEvaluator.evaluate(arg)
+        next unless options.is_a?(Hash) && options.key?(:status)
+
+        return status_code(options[:status]) || DEFAULT_REDIRECT_STATUS
+      end
+      DEFAULT_REDIRECT_STATUS
     end
 
     # Collects the argument-array of every `<name>` command call in the subtree.

@@ -7,10 +7,11 @@ RSpec.describe RailsOpenapiGenerator::ResponseBuilder do
     RailsOpenapiGenerator::Route.new(http_method: method, path: "/x", controller: "x", action: "y")
   end
 
-  def make_render_result(schema: nil, renders_json: false, explicit_status: nil, head: false)
+  def make_render_result(schema: nil, renders_json: false, explicit_status: nil, head: false,
+                         redirect_status: nil)
     RailsOpenapiGenerator::RenderResult.new(
       schema: schema, renders_json: renders_json, explicit_status: explicit_status, head: head,
-      file_download: false, html_inline: false, template: nil
+      file_download: false, html_inline: false, template: nil, redirect_status: redirect_status
     )
   end
 
@@ -102,6 +103,34 @@ RSpec.describe RailsOpenapiGenerator::ResponseBuilder do
       result = make_render_result(schema: render_schema, renders_json: true, explicit_status: 201)
       response = builder.build(route("PATCH"), classification: classification(:json, render_result: result))
       expect(response.status).to eq(201)
+    end
+  end
+
+  describe "redirect responses" do
+    it "uses redirect_status as the status and emits no body" do
+      result = make_render_result(redirect_status: 302)
+      response = builder.build(route("POST"), classification: classification(:redirect, render_result: result))
+      expect(response.status).to eq(302)
+      expect(response.body).to be_nil
+      expect(response.kind).to eq(:redirect)
+    end
+
+    it "is not undeterminable" do
+      result = make_render_result(redirect_status: 302)
+      response = builder.build(route("POST"), classification: classification(:redirect, render_result: result))
+      expect(response).not_to be_undeterminable
+    end
+
+    it "honors an explicit 3xx status" do
+      result = make_render_result(redirect_status: 303)
+      response = builder.build(route("POST"), classification: classification(:redirect, render_result: result))
+      expect(response.status).to eq(303)
+    end
+
+    it "ignores the HTTP-method convention for a redirect" do
+      result = make_render_result(redirect_status: 302)
+      get = builder.build(route("GET"), classification: classification(:redirect, render_result: result))
+      expect(get.status).to eq(302) # not 200
     end
   end
 

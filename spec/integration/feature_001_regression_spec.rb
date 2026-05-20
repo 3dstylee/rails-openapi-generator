@@ -71,4 +71,13 @@ RSpec.describe "Feature 001 output is unchanged by response bodies", :rails_app 
     # The default empty exclude_source_paths leaves every controller documented.
     expect(document["paths"]).to have_key("/api/posts")
   end
+
+  it "leaves JSON endpoint status, body, and tags unchanged when redirect detection is added (FR-010)" do
+    # Redirect detection MUST NOT change the documented response of an action
+    # that already classifies as JSON / file_download / html_page / head.
+    body = index.dig("responses", "200", "content", "application/json", "schema")
+    expect(body["type"]).to eq("array")
+    expect(index["tags"]).to eq(["Api::UsersController"])
+    expect(index).not_to have_key("x-redirects")
+  end
 end

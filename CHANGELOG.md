@@ -3,6 +3,32 @@
 All notable changes to this gem are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - 2026-05-20
+
+### Added
+
+- An action whose success path is `redirect_to` (or `redirect_back` /
+  `redirect_back_or_to`) is now documented as a redirect — the response is
+  filed under the call's HTTP status code (`302 Found` by default, or the
+  `status:` option if it resolves to a 3xx code) with no response body. This
+  replaces the previous behavior, which fell through to "undeterminable" and
+  documented the operation with the HTTP-method convention (e.g. `201` for a
+  redirecting `POST`) plus a spurious `"response shape could not be
+  determined"` warning.
+- A short `_Redirects to another URL._` note is added to the operation's
+  description, mirroring the existing HTML-page and file-download notes.
+
+### Changed (additive)
+
+- The `"response shape could not be determined"` warning is no longer emitted
+  for actions whose only response statement is a redirect call. Actions with
+  no render, no redirect, and no resolvable view continue to emit the warning
+  (unchanged).
+- Existing JSON / file-download / HTML-page / `head` responses are documented
+  byte-identically to `0.7.0`. The change only affects endpoints whose
+  previous documentation came from the wrong-status / undeterminable
+  fallback.
+
 ## [0.7.0] - 2026-05-19
 
 ### Added

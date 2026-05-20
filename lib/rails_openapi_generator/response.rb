@@ -4,11 +4,12 @@ module RailsOpenapiGenerator
   # The success ("happy path") response of one operation: a status code, an
   # optional body schema, a description, and a kind.
   #
-  # `kind` is `:json`, `:html_page`, or `:file_download`. `body` is an OpenAPI
-  # schema Hash, or nil for a 204 / no-content response, a non-JSON response,
-  # and an undeterminable JSON response. `undeterminable` (meaningful only for
-  # `:json`) marks a JSON response whose shape could not be determined.
-  # `page_reference` carries the HTML template name for an `:html_page`.
+  # `kind` is `:json`, `:html_page`, `:file_download`, or `:redirect`. `body`
+  # is an OpenAPI schema Hash, or nil for a 204 / no-content response, a
+  # non-JSON response, and an undeterminable JSON response. `undeterminable`
+  # (meaningful only for `:json`) marks a JSON response whose shape could not
+  # be determined. `page_reference` carries the HTML template name for an
+  # `:html_page`. A `:redirect` response carries a 3xx status and no body.
   Response = Struct.new(
     :status, :body, :description, :undeterminable, :kind, :page_reference,
     keyword_init: true
@@ -32,6 +33,10 @@ module RailsOpenapiGenerator
 
     def file_download?
       kind == :file_download
+    end
+
+    def redirect?
+      kind == :redirect
     end
   end
 end

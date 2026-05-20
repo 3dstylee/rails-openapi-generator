@@ -15,6 +15,11 @@ Rails.application.routes.draw do
     put "statuses/unmark", to: "statuses#unmark"
     post "statuses/make", to: "statuses#make"
     post "statuses/guarded", to: "statuses#guarded"
+    post "redirects/create", to: "redirects#create"
+    post "redirects/transfer", to: "redirects#transfer"
+    get "redirects/old_path", to: "redirects#old_path"
+    post "redirects/bounce", to: "redirects#bounce"
+    post "redirects/mixed", to: "redirects#mixed"
     post "inputs/upload", to: "inputs#upload"
     resources :inputs, only: %i[show create]
   end

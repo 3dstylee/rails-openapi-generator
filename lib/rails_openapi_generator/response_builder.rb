@@ -23,6 +23,8 @@ module RailsOpenapiGenerator
         Response.new(status: status, kind: :html_page, page_reference: classification.template_name)
       when :file_download
         Response.new(status: status, kind: :file_download)
+      when :redirect
+        Response.new(status: render_result.redirect_status, kind: :redirect)
       when :json
         json_response(status, render_result, view_schema, empty)
       else

@@ -117,13 +117,16 @@ module RailsOpenapiGenerator
       { response.status.to_s => entry }
     end
 
-    # The response content type and schema, by response kind.
+    # The response content type and schema, by response kind. A `:redirect`
+    # response has no body, so no content entry is emitted.
     def response_content(response)
       case response.kind
       when :html_page
         { "text/html" => { "schema" => { "type" => "string" } } }
       when :file_download
         { "application/octet-stream" => { "schema" => { "type" => "string", "format" => "binary" } } }
+      when :redirect
+        nil
       else
         response.body ? { "application/json" => { "schema" => response.body } } : nil
       end

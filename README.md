@@ -140,6 +140,13 @@ Only happy-path (2xx/3xx) statuses are read; an error-status guard
 (`render status: :unprocessable_entity`) does not affect the documented success
 status.
 
+An action whose success path is `redirect_to` (or `redirect_back` /
+`redirect_back_or_to`) is documented as a redirect: the response is filed under
+the call's 3xx status (`302` by default, or the `status:` option — e.g.
+`redirect_to path, status: :see_other` → `303`) with no response body. JSON
+renders, file downloads, inline HTML, and resolvable view templates continue to
+take precedence over a redirect signal.
+
 Endpoints whose response shape cannot be determined (non-literal `render json:`,
 serializer-based responses, unlocatable partials) still get a valid success
 response with no body schema, and are named in the run report. No controller
@@ -223,6 +230,7 @@ render it. A quick option using [Redocly CLI](https://github.com/Redocly/redocly
 that opens directly, no server required:
 
 ```sh
+rake openapi:generate
 npx @redocly/cli build-docs doc/openapi.json -o doc/openapi.html
 open doc/openapi.html
 ```

@@ -3,15 +3,18 @@
 module RailsOpenapiGenerator
   # The outcome of classifying one action's response.
   #
-  # `kind` is `:json`, `:html_page`, `:file_download`, or `:undeterminable`.
-  # `jbuilder_file` is set for a JSON endpoint resolved via a view template;
-  # `template_name` is set for an HTML-page endpoint resolved via a view.
+  # `kind` is `:json`, `:html_page`, `:file_download`, `:redirect`, or
+  # `:undeterminable`. `jbuilder_file` is set for a JSON endpoint resolved via
+  # a view template; `template_name` is set for an HTML-page endpoint resolved
+  # via a view.
   Classification = Struct.new(:kind, :render_result, :jbuilder_file, :template_name, keyword_init: true)
 
   # Decides whether an action returns JSON, renders an HTML page, sends a file
-  # download, or is undeterminable — by static signals only (research R3).
-  # When no direct signal classifies the action, a {WrapperDownloadResolver}
-  # (when supplied) is consulted to detect a download made through wrappers.
+  # download, issues a redirect, or is undeterminable — by static signals only
+  # (research R3). When no direct signal classifies the action, a
+  # {WrapperDownloadResolver} (when supplied) is consulted to detect a download
+  # made through wrappers; a `redirect_to` signal is the next fallback before
+  # `:undeterminable`.
   class RenderClassifier
     def initialize(view_locator:, wrapper_resolver: nil)
       @view_locator = view_locator
@@ -44,10 +47,13 @@ module RailsOpenapiGenerator
       end
     end
 
-    # Last resort: a download reached through wrapper methods.
+    # Last resort: a download reached through wrapper methods, then a
+    # redirect, then `:undeterminable`.
     def classify_by_wrapper(render_result, controller_class, action_node)
       if @wrapper_resolver&.download?(controller_class, action_node)
         classification(:file_download, render_result)
+      elsif render_result.redirect_status
+        classification(:redirect, render_result)
       else
         classification(:undeterminable, render_result)
       end
