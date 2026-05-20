@@ -145,6 +145,17 @@ RSpec.describe "Feature 001 output is unchanged by response bodies", :rails_app 
     expect(per_page["schema"]).not_to have_key("items")
   end
 
+  it "leaves operations without parameter-dependent helper renders byte-identical under feature 018 (SC-003)" do
+    # api/users#index and api/users#show have no receiverless helper
+    # calls. Feature 018's argument propagation must not change their
+    # response schemas — the walker simply finds no helpers to expand.
+    list = index["responses"]["200"]["content"]["application/json"]["schema"]
+    expect(list["type"]).to eq("array")
+
+    show = document["paths"]["/api/users/{id}"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+    expect(show["properties"]).to include("id", "role")
+  end
+
   it "leaves jbuilder-backed and inline-render endpoints byte-identical under feature 017 (SC-002)" do
     # Feature 017's new branch fires only when render_result.render_sites is
     # empty. api/users#index (jbuilder view) and api/users#post (inline

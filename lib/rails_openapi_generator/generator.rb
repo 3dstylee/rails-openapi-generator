@@ -44,6 +44,9 @@ module RailsOpenapiGenerator
       @walker           = ControllerMethodWalker.new(
         method_resolver: @method_resolver, max_depth: @configuration.method_resolution_depth
       )
+      @helper_binding_walker = HelperBindingWalker.new(
+        method_resolver: @method_resolver, max_depth: @configuration.method_resolution_depth
+      )
       @wrapper_resolver = WrapperDownloadResolver.new(walker: @walker)
       @implicit_scanner = ImplicitParamScanner.new(walker: @walker)
       @before_action_resolver = BeforeActionResolver.new(method_resolver: @method_resolver)
@@ -160,26 +163,30 @@ module RailsOpenapiGenerator
 
     def rescue_from_render_sites(controller_class)
       handlers = @rescue_from_resolver.resolve(controller_class)
-      handlers.flat_map do |handler|
-        bodies = @walker.reachable_bodies(controller_class, handler.method_node)
-        bodies.flat_map { |body| @render_extractor.collect_sites(body, source: :rescue_from) }
-      end
+      handlers.flat_map { |handler| sites_from_callback(controller_class, handler.method_node, :rescue_from) }
     end
 
     def helper_render_sites(controller_class, action_node)
-      # `reachable_bodies` returns [action_node, ...helper_bodies]. Skip
-      # the first (already collected by RenderExtractor#extract).
-      bodies = @walker.reachable_bodies(controller_class, action_node).drop(1)
+      # The binding walker excludes the action body itself — that body's
+      # render sites are already collected by RenderExtractor#extract.
+      bodies = @helper_binding_walker.reachable_bodies(controller_class, action_node)
       bodies.flat_map { |body| @render_extractor.collect_sites(body, source: :helper) }
     end
 
     def before_action_render_sites(controller_class, action_name)
       callbacks = @before_action_resolver.resolve(controller_class)
       applicable = callbacks.select { |callback| callback.applies_to?(action_name) }
-      applicable.flat_map do |callback|
-        bodies = @walker.reachable_bodies(controller_class, callback.method_node)
-        bodies.flat_map { |body| @render_extractor.collect_sites(body, source: :before_action) }
-      end
+      applicable.flat_map { |callback| sites_from_callback(controller_class, callback.method_node, :before_action) }
+    end
+
+    # Renders contributed by a Rails-invoked callback (before_action or
+    # rescue_from handler): the callback body itself (no inferred
+    # bindings — Rails calls it) plus every helper it reaches, walked
+    # with argument propagation (feature 018).
+    def sites_from_callback(controller_class, method_node, source)
+      own_sites = @render_extractor.collect_sites(method_node, source: source)
+      helper_bodies = @helper_binding_walker.reachable_bodies(controller_class, method_node)
+      own_sites + helper_bodies.flat_map { |body| @render_extractor.collect_sites(body, source: source) }
     end
 
     def count_kind(response)

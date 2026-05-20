@@ -160,6 +160,17 @@ for example) are silently skipped. Controllers without any
 `rescue_from` declarations on their entire ancestor chain emit
 byte-identical output to before the feature.
 
+Render sites reached through receiverless helper methods (e.g.
+`render_error(message, 422, :unprocessable_entity)`) are documented by
+walking the helper's body with **argument propagation**: literal
+positional and keyword arguments at the call site are bound to the
+helper's parameters and substituted into the body before render
+extraction. The substitution composes through nested helper calls and
+is bounded by `method_resolution_depth` (default 5). Non-literal
+arguments leave the corresponding parameter unbound — references to
+it in the body still evaluate as permissive. The same propagation
+applies inside `before_action` callbacks and `rescue_from` handlers.
+
 Actions that produce no static response signal — no `render`, no
 `head`, no `redirect_to`, no `respond_to`, no resolvable view, and no
 contributing extras (helpers / `before_action` / `rescue_from`) — are

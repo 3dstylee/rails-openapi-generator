@@ -149,6 +149,19 @@ RSpec.describe "Deterministic output", :rails_app do
     FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
   end
 
+  it "produces stable helper-binding propagation across runs (feature 018)" do
+    operations = Array.new(2) do
+      config = RailsOpenapiGenerator::Configuration.new
+      config.output_path = File.expand_path("../../tmp/spec/det_binding.json", __dir__)
+      RailsOpenapiGenerator::Generator.new(config).document["paths"]["/api/binding_helpers/create"]["post"]["responses"]
+    end
+
+    expect(operations[0]).to eq(operations[1])
+    expect(operations[0].keys).to include("422")
+  ensure
+    FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
+  end
+
   it "produces a stable implicit-200-with-error-extras response across runs (feature 017)" do
     responses = Array.new(2) do
       config = RailsOpenapiGenerator::Configuration.new

@@ -3,6 +3,27 @@
 All notable changes to this gem are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.18.0] - 2026-05-20
+
+### Added
+
+- Receiverless helper methods called from an action now receive
+  **argument propagation**: literal positional and keyword arguments
+  at the call site are bound to the helper's parameters and
+  substituted into the helper body before render extraction. A
+  controller that centralizes error rendering in a helper like
+  `render_error(message, status_code, status)` and calls it as
+  `render_error("oops", 422, :unprocessable_entity)` now documents
+  the 422 entry (previously dropped because `status:` resolved to
+  the unsubstituted parameter reference). Bindings compose through
+  multi-level helper chains, are bounded by
+  `method_resolution_depth` (default 5), and apply equally inside
+  `before_action` callbacks and `rescue_from` handlers.
+- Non-literal arguments leave the corresponding parameter unbound;
+  references to it stay permissive, matching existing posture.
+- Operations whose helpers contain no parameter-dependent render
+  sites emit byte-identical output to `0.17.0`.
+
 ## [0.17.0] - 2026-05-20
 
 ### Fixed
