@@ -3,6 +3,68 @@
 All notable changes to this gem are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.14.0] - 2026-05-20
+
+### Added
+
+- `rescue_from` declarations on the controller class chain are now
+  detected and each handler's renders are documented as response
+  entries on every action in the controller. For an
+  `ApplicationController` that declares 3–5 handlers (for
+  `RecordNotFound`, `NotAuthorizedError`, `ParameterMissing`,
+  `RecordInvalid`, etc.), every operation on every inheriting
+  controller gains 3–5 additional response entries — each with the
+  handler's literal body shape and explicit status.
+- Both method-form (`rescue_from FooError, with: :method_name`) and
+  block-form (`rescue_from FooError do |e| render ... end`) handlers
+  are walked. Block-form resolution uses `proc.source_location` plus
+  a targeted Ripper AST search.
+- Handlers declared inside concerns mixed into the controller (or
+  any ancestor) are included automatically — `rescue_handlers`
+  merges the chain.
+- Constant resolution and template-render walking inside handler
+  bodies inherit from features 011 / 013 for free (no new wiring):
+  a handler doing `render json: { error: "..." }, status:
+  Constants::FORBIDDEN_STATUS` resolves the constant via the
+  existing pipeline.
+- A handler whose target method cannot be resolved (e.g. defined
+  in a gem) is silently skipped; the generator never raises.
+- A new internal `RescueFromResolver` class (one method:
+  `resolve(controller_class)`) caches per-class results for the
+  generator run.
+
+### Changed (additive)
+
+- Operations on controllers whose entire class chain has no
+  `rescue_from` declarations emit byte-identical output to
+  `0.13.0`. The new walker only activates when
+  `controller.rescue_handlers` is non-empty (SC-004).
+
+### Fixed
+
+- An action with no inline render but backed by a jbuilder view, on
+  a controller inheriting from a base with `rescue_from`
+  declarations, no longer loses its happy-path `200` entry to the
+  inherited error-status entries. The view's schema is now
+  integrated into the convention-status entry even when extras
+  (rescue_from, before_action, helpers) populate other statuses.
+  This bug existed since `0.9.0` for any case where extras
+  produced ≥ 2 entries; feature `0.14.0` made it visible at scale
+  because rescue_from typically inherits 3–5 entries.
+
+### Out of scope (deferred to a future feature)
+
+- Re-raising handlers — we don't follow the re-raise chain.
+- Handlers that delegate to `Rails.error.handle` /
+  `ActiveSupport::ErrorReporter`.
+- Non-literal `status:` values (e.g. `status: error.status_code`)
+  — dropped per existing literal-only resolution rules.
+- Exception-implied statuses without an explicit `rescue_from`
+  (e.g. `find!` → `RecordNotFound` without a corresponding
+  handler).
+- Surfacing the rescued exception class name in the OpenAPI doc
+  — only the handler's status and body shape are documented.
+
 ## [0.13.0] - 2026-05-20
 
 ### Added

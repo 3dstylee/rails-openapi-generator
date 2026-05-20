@@ -140,6 +140,19 @@ Only happy-path (2xx/3xx) statuses are read; an error-status guard
 (`render status: :unprocessable_entity`) does not affect the documented success
 status.
 
+`rescue_from` declarations on the controller class chain are detected
+and each handler's renders are documented as response entries on every
+action in the controller. An `ApplicationController` declaring
+`rescue_from RecordNotFound, with: :record_not_found` (rendering 404
+with a literal body) adds a `404` entry to every inheriting
+controller's operations. Method-form (`with: :method`) and block-form
+(`rescue_from FooError do |e| ... end`) handlers are both walked.
+Handlers declared in concerns are picked up via the `rescue_handlers`
+chain. Handlers whose method cannot be resolved (defined in a gem,
+for example) are silently skipped. Controllers without any
+`rescue_from` declarations on their entire ancestor chain emit
+byte-identical output to before the feature.
+
 An action whose success path is `redirect_to` (or `redirect_back` /
 `redirect_back_or_to`) is documented as a redirect: the response is filed under
 the call's 3xx status (`302` by default, or the `status:` option — e.g.

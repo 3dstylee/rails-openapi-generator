@@ -47,6 +47,7 @@ module RailsOpenapiGenerator
       @wrapper_resolver = WrapperDownloadResolver.new(walker: @walker)
       @implicit_scanner = ImplicitParamScanner.new(walker: @walker)
       @before_action_resolver = BeforeActionResolver.new(method_resolver: @method_resolver)
+      @rescue_from_resolver   = RescueFromResolver.new(method_resolver: @method_resolver)
       @classifier       = RenderClassifier.new(view_locator: @view_locator, wrapper_resolver: @wrapper_resolver)
       @response_builder = ResponseBuilder.new
       @operation_builder = OperationBuilder.new
@@ -153,7 +154,16 @@ module RailsOpenapiGenerator
 
       helper_sites = helper_render_sites(controller_class, action_node)
       callback_sites = before_action_render_sites(controller_class, route.action)
-      helper_sites + callback_sites
+      rescue_sites = rescue_from_render_sites(controller_class)
+      helper_sites + callback_sites + rescue_sites
+    end
+
+    def rescue_from_render_sites(controller_class)
+      handlers = @rescue_from_resolver.resolve(controller_class)
+      handlers.flat_map do |handler|
+        bodies = @walker.reachable_bodies(controller_class, handler.method_node)
+        bodies.flat_map { |body| @render_extractor.collect_sites(body, source: :rescue_from) }
+      end
     end
 
     def helper_render_sites(controller_class, action_node)

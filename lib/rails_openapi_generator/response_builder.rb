@@ -67,11 +67,35 @@ module RailsOpenapiGenerator
         return Response.new(status: status, body: body)
       end
 
-      # If only one render site exists, also fall back to the view
-      # schema when the site's render is non-literal (preserves the
-      # pre-0.9.0 behavior for jbuilder-backed endpoints).
-      maybe_use_view(entries, sites, view_schema)
+      # When a jbuilder view exists, ensure the operation's
+      # convention-status entry carries the view's schema — even when
+      # extras (rescue_from, before_action, helpers) have populated
+      # other status entries. Without this, an action that defines no
+      # inline render but has a resolvable view would lose its
+      # happy-path 200 entry to the error-status entries entirely.
+      integrate_view_schema(entries, sites, view_schema, route)
       Response.new(entries: entries, kind: :json)
+    end
+
+    # When a view (jbuilder) is available, the action's documented
+    # success response is its view's schema at the HTTP-method
+    # convention status (unless the action body's literal render already
+    # provided a body at that status). Inject or upgrade the entry as
+    # needed.
+    def integrate_view_schema(entries, sites, view_schema, route)
+      return if view_schema.nil?
+
+      convention = STATUS_BY_METHOD.fetch(route.http_method, DEFAULT_STATUS)
+      action_renders = sites.select { |site| site.source == :action && !site.head? }
+      return if action_renders.any? { |site| resolved_status(site, route) == convention && !site.schema.nil? }
+
+      entry = entries.find { |e| e.status == convention }
+      if entry.nil?
+        entries << ResponseEntry.new(status: convention, body: view_schema)
+        entries.sort_by!(&:status)
+      elsif entry.body.nil? && entry.content_types.nil?
+        entry.body = view_schema
+      end
     end
 
     # A response is body-less without being undeterminable when the
@@ -165,20 +189,6 @@ module RailsOpenapiGenerator
       else
         { "oneOf" => unique.sort_by { |schema| JSON.generate(schema) } }
       end
-    end
-
-    # When the single render site at the convention status has no schema
-    # and a view template did provide one, prefer the view's schema —
-    # preserves jbuilder-backed endpoint output from before 0.9.0.
-    def maybe_use_view(entries, sites, view_schema)
-      return if view_schema.nil?
-      return unless entries.size == 1
-      return unless entries.first.body.nil?
-
-      action_sites = sites.select { |site| site.source == :action && !site.head? }
-      return unless action_sites.size == 1
-
-      entries.first.body = view_schema
     end
   end
 end
