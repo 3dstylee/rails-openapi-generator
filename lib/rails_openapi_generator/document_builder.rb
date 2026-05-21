@@ -151,14 +151,14 @@ module RailsOpenapiGenerator
     def sorted_parameters(parameters)
       parameters
         .sort_by { |param| [LOCATION_ORDER.fetch(param.location, 9), param.name] }
-        .map do |param|
-          {
-            "name" => param.name,
-            "in" => param.location.to_s,
-            "required" => param.required,
-            "schema" => param.schema
-          }
-        end
+        .map { |param| parameter_object(param) }
+    end
+
+    def parameter_object(param)
+      object = { "name" => param.name, "in" => param.location.to_s, "required" => param.required }
+      object["description"] = param.description if param.description
+      object["schema"] = param.schema
+      object
     end
   end
 end

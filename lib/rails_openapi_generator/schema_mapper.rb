@@ -40,6 +40,7 @@ module RailsOpenapiGenerator
         when :max_length then schema["maxLength"] = value
         when :format     then schema["pattern"] = pattern_source(value) if pattern_source(value)
         when :blank      then schema["minLength"] = 1 if value == false && schema["type"] == "string"
+        when :description then schema["description"] = value if value.is_a?(::String)
         end
       end
       schema

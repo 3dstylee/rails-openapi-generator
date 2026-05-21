@@ -39,6 +39,31 @@ RSpec.describe "Request parameters from rails_param validations", :rails_app do
     expect(schema["required"]).to contain_exactly("name", "email")
   end
 
+  describe "param! description (feature 024)" do
+    it "surfaces a query parameter's :description at the parameter level" do
+      parameters = document["paths"]["/api/users"]["get"]["parameters"]
+      query_param = parameters.find { |param| param["name"] == "query" }
+
+      expect(query_param["description"]).to eq("Free-text search across name and email")
+      # The description is lifted out of the schema into the parameter object.
+      expect(query_param["schema"]).not_to have_key("description")
+    end
+
+    it "leaves the parameter description absent when :description is not given" do
+      parameters = document["paths"]["/api/users"]["get"]["parameters"]
+      per_page   = parameters.find { |param| param["name"] == "per_page" }
+
+      expect(per_page).not_to have_key("description")
+    end
+
+    it "surfaces a body property's :description inside the schema" do
+      schema = document["paths"]["/api/users"]["post"]["requestBody"]["content"]["application/json"]["schema"]
+
+      expect(schema["properties"]["name"]).to include("description" => "Display name. 1–100 chars.")
+      expect(schema["properties"]["email"]).not_to have_key("description")
+    end
+  end
+
   it "still produces an operation for an action with no param! calls" do
     operation = document["paths"]["/api/posts"]["get"]
 

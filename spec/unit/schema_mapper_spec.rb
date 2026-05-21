@@ -65,5 +65,15 @@ RSpec.describe RailsOpenapiGenerator::SchemaMapper do
       schema = mapper.map(param(type: "String", constraints: { blank: false }))
       expect(schema["minLength"]).to eq(1)
     end
+
+    it "maps :description to the schema's description (feature 024)" do
+      schema = mapper.map(param(type: "String", constraints: { description: "Flag for the foo widget" }))
+      expect(schema["description"]).to eq("Flag for the foo widget")
+    end
+
+    it "ignores a non-String :description value" do
+      schema = mapper.map(param(type: "String", constraints: { description: 42 }))
+      expect(schema).not_to have_key("description")
+    end
   end
 end

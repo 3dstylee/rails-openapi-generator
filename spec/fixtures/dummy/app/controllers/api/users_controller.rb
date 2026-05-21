@@ -5,7 +5,7 @@ module Api
     # Search users
     # Returns the users matching the given filters, newest first.
     def index
-      param! :query, String, blank: false
+      param! :query, String, blank: false, description: "Free-text search across name and email"
       param! :per_page, Integer, in: 1..100
     end
 
@@ -15,7 +15,7 @@ module Api
     end
 
     def create
-      param! :name, String, required: true
+      param! :name, String, required: true, description: "Display name. 1–100 chars."
       param! :email, String, required: true, format: /.+@.+/
       param! :role, String, in: %w[admin member]
       return render status: :unprocessable_entity, json: { error: "invalid" } unless params[:name]

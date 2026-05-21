@@ -3,6 +3,34 @@
 All notable changes to this gem are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.24.0] - 2026-05-21
+
+### Added
+
+- `param!` declarations now support a `description:` option that
+  surfaces in the OpenAPI output:
+  - For **query / path** parameters, the description is emitted at
+    the OpenAPI Parameter Object level (the canonical location doc
+    viewers like Swagger UI / Redoc / Scalar render).
+  - For **request body** properties (top-level under POST/PUT/PATCH
+    and any nested `param!` block), the description is emitted on
+    the property's schema — the canonical location for body-field
+    documentation in OpenAPI 3.1.
+- Example:
+  ```ruby
+  param! :query, String, blank: false,
+    description: "Free-text search across name and email"
+  ```
+  produces:
+  ```json
+  { "name": "query", "in": "query", "required": false,
+    "description": "Free-text search across name and email",
+    "schema": { "type": "string", "minLength": 1 } }
+  ```
+- Non-String `:description` values are ignored (no schema/parameter
+  field emitted). Operations without `:description` on any
+  `param!` emit byte-identical output to `0.23.0`.
+
 ## [0.23.0] - 2026-05-21
 
 ### Added
