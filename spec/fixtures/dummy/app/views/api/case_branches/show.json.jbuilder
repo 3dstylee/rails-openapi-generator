@@ -6,3 +6,5 @@ when 2
 else
   json.c 3
 end
+
+json.optional @optional if @optional.present?

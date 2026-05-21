@@ -44,10 +44,14 @@ RSpec.describe "jbuilder partials & case/when branches (feature 016)", :rails_ap
 
     it "merges every branch's properties into one object schema" do
       expect(body["type"]).to eq("object")
-      expect(body["properties"].keys).to contain_exactly("a", "b", "c")
+      expect(body["properties"].keys).to include("a", "b", "c")
       expect(body["properties"]["a"]).to eq("type" => "integer")
       expect(body["properties"]["b"]).to eq("type" => "integer")
       expect(body["properties"]["c"]).to eq("type" => "integer")
+    end
+
+    it "also includes a modifier-if guarded property (feature 019)" do
+      expect(body["properties"]).to have_key("optional")
     end
   end
 end

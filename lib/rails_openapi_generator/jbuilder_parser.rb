@@ -83,7 +83,9 @@ module RailsOpenapiGenerator
     def conditional_bodies(node)
       case node[0]
       when :if_mod, :unless_mod
-        [[node[1]]]
+        # Ripper shape: [:if_mod, condition, body] — node[2] is the
+        # body (e.g. `json.errors @errors`), node[1] is the condition.
+        [[node[2]]]
       when :if, :unless, :elsif
         bodies = [Array(node[2])]
         tail = node[3]

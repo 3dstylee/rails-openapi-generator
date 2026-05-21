@@ -127,6 +127,26 @@ RSpec.describe RailsOpenapiGenerator::JbuilderParser do
     end
   end
 
+  describe "modifier-if / modifier-unless body extraction (feature 019)" do
+    it "includes a json.<key> guarded by modifier-if" do
+      path = template("modifier_if", <<~JBUILDER)
+        json.message @message
+        json.errors @errors if @errors.present?
+      JBUILDER
+      schema = described_class.new(views_root: tmp_root).parse(path)
+      expect(schema["properties"].keys).to contain_exactly("message", "errors")
+    end
+
+    it "includes a json.<key> guarded by modifier-unless" do
+      path = template("modifier_unless", <<~JBUILDER)
+        json.always 1
+        json.optional 2 unless skip?
+      JBUILDER
+      schema = described_class.new(views_root: tmp_root).parse(path)
+      expect(schema["properties"].keys).to contain_exactly("always", "optional")
+    end
+  end
+
   describe "case/when branch merging (feature 016)" do
     it "merges every when body and the else body into one schema" do
       path = template("case_when_else", <<~JBUILDER)

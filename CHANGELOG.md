@@ -3,6 +3,20 @@
 All notable changes to this gem are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.19.0] - 2026-05-20
+
+### Fixed
+
+- A `json.<key>` line in a jbuilder template guarded by
+  **modifier-`if`** or **modifier-`unless`** (e.g.
+  `json.errors @errors if @errors.present?`) is now included in
+  the schema. Previously the parser returned the modifier's
+  CONDITION node — not the guarded statement — as the branch body,
+  so the guarded line was silently dropped from the resulting
+  schema. The fix is a one-line correction in
+  `JbuilderParser#conditional_bodies`. Templates without modifier
+  conditionals emit byte-identical schemas to `0.18.0`.
+
 ## [0.18.0] - 2026-05-20
 
 ### Added
