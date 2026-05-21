@@ -2,7 +2,7 @@
 
 module RailsOpenapiGenerator
   # A normalized parameter ready for the OpenAPI document.
-  Parameter = Struct.new(:name, :location, :required, :schema, keyword_init: true)
+  Parameter = Struct.new(:name, :location, :required, :schema, :description, keyword_init: true)
 
   # The fully assembled description of one operation.
   Endpoint = Struct.new(
@@ -77,12 +77,12 @@ module RailsOpenapiGenerator
       route.path_params.each do |segment|
         call   = by_name[segment]
         schema = call ? @schema_mapper.map(call) : { "type" => "string" }
-        parameters << Parameter.new(name: segment, location: :path, required: true, schema: schema)
+        parameters << build_parameter(name: segment, location: :path, required: true, schema: schema)
       end
 
       unless body_method?(route)
         non_path_calls(route, param_calls).each do |call|
-          parameters << Parameter.new(
+          parameters << build_parameter(
             name: call.name, location: :query, required: call.required, schema: schema_for(call)
           )
         end
@@ -92,6 +92,17 @@ module RailsOpenapiGenerator
       end
 
       parameters
+    end
+
+    # Builds a Parameter, lifting any `description` from the schema onto the
+    # parameter object itself (feature 024). OpenAPI 3.1's Parameter Object
+    # carries `description` at the parameter level, which is what doc viewers
+    # surface for query/path params; leaving it duplicated inside `schema`
+    # would render twice in some viewers, so we relocate it.
+    def build_parameter(name:, location:, required:, schema:)
+      description = schema.is_a?(Hash) ? schema.delete("description") : nil
+      Parameter.new(name: name, location: location, required: required,
+                    schema: schema, description: description)
     end
 
     def build_request_body(route, param_calls, implicit)

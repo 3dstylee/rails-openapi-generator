@@ -40,8 +40,8 @@ RSpec.describe "Happy-path response bodies", :rails_app do
 
   it "types a literal render json: response precisely" do
     body = schema("/api/users", "post")
-    expect(body["properties"]["active"]).to eq("type" => "boolean")
-    expect(body["properties"]["id"]).to eq("type" => "integer")
+    expect(body["properties"]["active"]).to eq("type" => "boolean", "example" => true)
+    expect(body["properties"]["id"]).to eq("type" => "integer", "example" => 1)
   end
 
   it "files the success response under the conventional status code" do

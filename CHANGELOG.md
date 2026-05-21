@@ -3,6 +3,118 @@
 All notable changes to this gem are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.24.0] - 2026-05-21
+
+### Added
+
+- `param!` declarations now support a `description:` option that
+  surfaces in the OpenAPI output:
+  - For **query / path** parameters, the description is emitted at
+    the OpenAPI Parameter Object level (the canonical location doc
+    viewers like Swagger UI / Redoc / Scalar render).
+  - For **request body** properties (top-level under POST/PUT/PATCH
+    and any nested `param!` block), the description is emitted on
+    the property's schema — the canonical location for body-field
+    documentation in OpenAPI 3.1.
+- Example:
+  ```ruby
+  param! :query, String, blank: false,
+    description: "Free-text search across name and email"
+  ```
+  produces:
+  ```json
+  { "name": "query", "in": "query", "required": false,
+    "description": "Free-text search across name and email",
+    "schema": { "type": "string", "minLength": 1 } }
+  ```
+- Non-String `:description` values are ignored (no schema/parameter
+  field emitted). Operations without `:description` on any
+  `param!` emit byte-identical output to `0.23.0`.
+
+## [0.23.0] - 2026-05-21
+
+### Added
+
+- `param!` now recognizes rails-param's symbol-form type shorthand
+  `:boolean` (e.g. `param! :downloadable, :boolean, required: true`)
+  and emits `{type: boolean}` in the requestBody schema. Previously
+  the symbol form was unresolvable and the parameter fell back to
+  `{type: string}` (DEFAULT_SCHEMA). Class-form types
+  (`Boolean`, `TrueClass`, `FalseClass`) were already recognized;
+  this brings the symbol shorthand to parity. Easy to extend if more
+  symbol shorthands surface (`:bool`, `:int`, etc.).
+
+## [0.22.0] - 2026-05-20
+
+### Fixed
+
+- `json.partial! "name"` and `json.array! @c, partial: "name"` with a
+  **bare** (unqualified) partial name now resolve relative to the
+  caller's directory first — matching Rails' own partial-resolution
+  convention. Previously, only slash-qualified names like
+  `"api/users/user"` were resolvable, and bare names silently failed
+  to find the partial (the schema degraded to permissive `{}`).
+  Slash-qualified names continue to resolve against `views_root`
+  exactly as before.
+- This unblocks the feature 020 sidecar mechanism for real-world
+  templates that use Rails' relative partial convention — every
+  `_partial.schema.json` next to a `_partial.json.jbuilder` now
+  surfaces whether the consumer references the partial by bare name
+  or full path.
+
+## [0.21.0] - 2026-05-20
+
+### Added
+
+- Primitive literal values in jbuilder templates and inline
+  `render json:` hashes now carry an OpenAPI `example` alongside
+  the inferred type:
+  - `json.role "member"` → `{type: string, example: "member"}`
+  - `json.id 42` → `{type: integer, example: 42}`
+  - `json.price 9.99` → `{type: number, example: 9.99}`
+  - `json.active true` → `{type: boolean, example: true}`
+  - `json.tags ["a", "b"]` → `{type: array, items: {type: string,
+    example: "a"}, example: ["a", "b"]}`
+- Composite literal renders (`render json: { ... }`, nested
+  `json.x do ... end` blocks) recurse: every literal leaf gets its
+  own `example`.
+- Non-literal expressions (`json.id user.id`) remain permissive
+  (`{}`) — no example, no change from `0.20.0`.
+- Sidecar JSON Schema files (feature 020) are loaded verbatim, so
+  a sidecar's `example` (or its absence) overrides the inferred one.
+
+### Changed
+
+- Operations with literal values in templates / inline renders gain
+  `example` keys in their response schemas. Output is **not**
+  byte-identical to `0.20.0` for these operations (additive — the
+  `type` and field structure are unchanged, and the result remains
+  valid OpenAPI 3.1).
+
+## [0.20.0] - 2026-05-20
+
+### Added
+
+- **JSON Schema sidecar files** — a `.schema.json` file sitting next
+  to a jbuilder template (or at the action's conventional view path)
+  declares the response schema directly, overriding the parser's
+  inference. Standard JSON Schema (Draft 2020-12). The convention:
+  - Partial sidecar: `_user.schema.json` next to
+    `_user.json.jbuilder` — used wherever `partial: "users/user"`
+    resolves.
+  - Action-template sidecar: `<action>.schema.json` next to
+    `<action>.json.jbuilder`.
+  - Inline-render / no-view action sidecar:
+    `<controller>/<action>.schema.json` at the conventional view
+    path even when no `.json.jbuilder` exists — overrides the
+    body for the HTTP-method convention status entry.
+- Sidecars are loaded once per path and cached for the run.
+  Malformed sidecars (invalid JSON) emit a `Report` warning naming
+  the file and fall back to the inferred schema; the generator
+  never raises.
+- Operations and partials without sidecars emit byte-identical
+  output to `0.19.0`.
+
 ## [0.19.0] - 2026-05-20
 
 ### Fixed

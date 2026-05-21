@@ -23,8 +23,9 @@ RSpec.describe RailsOpenapiGenerator::JbuilderParser do
 
     expect(schema["type"]).to eq("object")
     expect(schema["properties"].keys).to contain_exactly("id", "name", "email", "role", "profile")
-    expect(schema["properties"]["role"]).to eq("type" => "string") # literal value → typed
-    expect(schema["properties"]["id"]).to eq({})                   # value expression → permissive
+    # Literal value → typed + carries example (feature 021).
+    expect(schema["properties"]["role"]).to eq("type" => "string", "example" => "member")
+    expect(schema["properties"]["id"]).to eq({}) # value expression → permissive
     expect(schema["properties"]["profile"]).to eq(
       "type" => "object", "properties" => { "bio" => {} }
     )
@@ -82,7 +83,10 @@ RSpec.describe RailsOpenapiGenerator::JbuilderParser do
         "type" => "array",
         "items" => {
           "type" => "object",
-          "properties" => { "id" => { "type" => "integer" }, "message" => { "type" => "string" } }
+          "properties" => {
+            "id" => { "type" => "integer", "example" => 1 },
+            "message" => { "type" => "string", "example" => "hello" }
+          }
         }
       )
     end
@@ -99,7 +103,10 @@ RSpec.describe RailsOpenapiGenerator::JbuilderParser do
 
       expect(schema["properties"]["user"]).to eq(
         "type" => "object",
-        "properties" => { "id" => { "type" => "integer" }, "name" => { "type" => "string" } }
+        "properties" => {
+          "id" => { "type" => "integer", "example" => 1 },
+          "name" => { "type" => "string", "example" => "n" }
+        }
       )
     end
 
@@ -124,6 +131,34 @@ RSpec.describe RailsOpenapiGenerator::JbuilderParser do
       expect { described_class.new(views_root: tmp_root).parse(path) }.not_to raise_error
       schema = described_class.new(views_root: tmp_root).parse(path)
       expect(schema["properties"]["today_logs"]).to eq({})
+    end
+  end
+
+  describe "Rails-style relative partial resolution (feature 022)" do
+    it "resolves a bare `json.partial! \"name\"` against the caller's directory first" do
+      template("nested/_widget", <<~JBUILDER)
+        json.id 1
+        json.label "widget"
+      JBUILDER
+      path = template("nested/index", <<~JBUILDER)
+        json.partial! "widget"
+      JBUILDER
+      schema = described_class.new(views_root: tmp_root).parse(path)
+
+      expect(schema["properties"]).to include("id", "label")
+      expect(schema["properties"]["id"]).to eq("type" => "integer", "example" => 1)
+    end
+
+    it "still resolves a slash-qualified partial against views_root" do
+      template("shared/_user", <<~JBUILDER)
+        json.id 1
+      JBUILDER
+      path = template("nested/show", <<~JBUILDER)
+        json.partial! "shared/user"
+      JBUILDER
+      schema = described_class.new(views_root: tmp_root).parse(path)
+
+      expect(schema["properties"]).to have_key("id")
     end
   end
 

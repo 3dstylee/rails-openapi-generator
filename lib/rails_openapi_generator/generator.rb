@@ -39,7 +39,9 @@ module RailsOpenapiGenerator
       @doc_extractor    = DocCommentExtractor.new
       @render_extractor = RenderExtractor.new
       @view_locator     = ViewLocator.new(views_root: views_root)
-      @jbuilder_parser  = JbuilderParser.new(views_root: views_root)
+      @sidecar_loader   = SchemaSidecarLoader.new(report: @report)
+      @jbuilder_parser  = JbuilderParser.new(views_root: views_root, sidecar_loader: @sidecar_loader)
+      @views_root       = views_root
       @method_resolver  = MethodResolver.new(yard_parser: @parser)
       @walker           = ControllerMethodWalker.new(
         method_resolver: @method_resolver, max_depth: @configuration.method_resolution_depth
@@ -113,10 +115,36 @@ module RailsOpenapiGenerator
         route, classification: classification, view_schema: view_schema, extra_sites: extra_sites
       )
 
+      apply_action_sidecar!(response, route)
+
       if response.undeterminable?
         @report.warn("#{route.http_method} #{route.path}: response shape could not be determined")
       end
       response
+    end
+
+    # When a sidecar exists at the action's conventional view path
+    # (`<views_root>/<controller>/<action>.schema.json`), use it as the
+    # authoritative body for the HTTP-method convention status entry,
+    # overriding what was inferred from a jbuilder template or an inline
+    # `render json:` (feature 020 US2). JSON-kind responses only —
+    # html_page / file_download / redirect ignore sidecars per FR-007.
+    def apply_action_sidecar!(response, route)
+      return unless response.kind == :json
+
+      schema = @sidecar_loader.for_view(@views_root, route.controller, route.action)
+      return if schema.nil?
+
+      convention = ResponseBuilder::STATUS_BY_METHOD.fetch(route.http_method, ResponseBuilder::DEFAULT_STATUS)
+      entry = response.entries.find { |e| e.status == convention }
+      if entry.nil?
+        response.entries << ResponseEntry.new(status: convention, body: schema)
+        response.entries.sort_by!(&:status)
+      else
+        entry.body = schema
+        entry.content_types = nil
+      end
+      response.undeterminable = false
     end
 
     # Resolves every unresolved template-render site in `sites` (mutates

@@ -125,6 +125,29 @@ inspection of two sources:
   contributes; no attempt is made to choose between them).
 - **literal `render json:`** — an inline `render json: { … }` with literal
   values. A literal render takes precedence over a view template.
+- **JSON Schema sidecar files** — when a `.schema.json` file sits next
+  to a jbuilder template (`_user.schema.json` alongside
+  `_user.json.jbuilder`), its JSON contents are used verbatim as the
+  response schema for that template, overriding the parser's inference.
+  The same convention applies at the action's conventional view path
+  (`<controller>/<action>.schema.json`) and works even when no
+  `.json.jbuilder` exists — covering inline `render json:` actions and
+  actions with no view at all. Sidecars are standard JSON Schema
+  (Draft 2020-12, the dialect OpenAPI 3.1 uses). A malformed sidecar
+  emits a warning and falls back to the parser's inferred schema; the
+  generator never raises. Useful for declaring richer types
+  (`format: email`, `enum`, `minimum`, `required`) than the parser can
+  recover from value expressions like `json.id user.id`.
+
+Primitive literal values surface in the output as `example` alongside
+the type — `json.role "member"` becomes
+`{type: string, example: "member"}` (Integer, Float, Boolean handled
+the same way; literal Arrays carry both an array-level `example` and
+items recursion). This works for jbuilder templates and for inline
+`render json: { ... }` literal hashes. Non-literal expressions
+(`json.id user.id`) stay permissive (`{}`). A sidecar's declared
+schema is loaded verbatim — its `example` (or absence of one) takes
+precedence over the inferred value.
 
 Field **names and nesting** are always recovered. Field **types** are
 best-effort: typed when read from a literal, permissive (`{}`, meaning "any")

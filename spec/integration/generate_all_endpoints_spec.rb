@@ -37,6 +37,8 @@ RSpec.describe "Generate an OpenAPI document for all endpoints", :rails_app do
       "/api/redirects/bounce", "/api/redirects/create", "/api/redirects/mixed",
       "/api/redirects/old_path", "/api/redirects/transfer",
       "/api/rescued_resources/{id}", "/api/rescued_resources_with_view",
+      "/api/sidecars/inline_render", "/api/sidecars/malformed",
+      "/api/sidecars/no_view", "/api/sidecars/with_partial",
       "/api/silent_with_rescue",
       "/api/reports/chained", "/api/reports/cyclic",
       "/api/respond_to/explicit_json", "/api/respond_to/html_only",

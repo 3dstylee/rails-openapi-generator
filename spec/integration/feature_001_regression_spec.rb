@@ -145,6 +145,18 @@ RSpec.describe "Feature 001 output is unchanged by response bodies", :rails_app 
     expect(per_page["schema"]).not_to have_key("items")
   end
 
+  it "leaves operations without sidecar schemas byte-identical under feature 020 (SC-003)" do
+    # api/users#index and api/users#show have no sidecar `.schema.json`
+    # next to their templates or at their view paths. Feature 020 must
+    # not change their inferred response schemas.
+    list = index["responses"]["200"]["content"]["application/json"]["schema"]
+    expect(list["type"]).to eq("array")
+    expect(list["items"]["properties"]).to include("id", "name", "email", "role", "profile")
+
+    show = document["paths"]["/api/users/{id}"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+    expect(show["properties"]).not_to have_key("$schema") # the marker of a sidecar
+  end
+
   it "leaves operations without parameter-dependent helper renders byte-identical under feature 018 (SC-003)" do
     # api/users#index and api/users#show have no receiverless helper
     # calls. Feature 018's argument propagation must not change their
@@ -181,7 +193,7 @@ RSpec.describe "Feature 001 output is unchanged by response bodies", :rails_app 
           "id" => {},
           "name" => {},
           "email" => {},
-          "role" => { "type" => "string" },
+          "role" => { "type" => "string", "example" => "member" },
           "profile" => { "type" => "object", "properties" => { "bio" => {} } }
         }
       }
@@ -194,7 +206,7 @@ RSpec.describe "Feature 001 output is unchanged by response bodies", :rails_app 
         "id" => {},
         "name" => {},
         "email" => {},
-        "role" => { "type" => "string" },
+        "role" => { "type" => "string", "example" => "member" },
         "profile" => { "type" => "object", "properties" => { "bio" => {} } }
       }
     )
