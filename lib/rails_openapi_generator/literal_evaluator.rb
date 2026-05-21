@@ -169,6 +169,8 @@ module RailsOpenapiGenerator
 
     # Converts a resolved Ruby value into an OpenAPI 3.1 schema Hash. Unknown or
     # unresolvable values become the permissive empty schema `{}` — "any" (R3).
+    # Primitive literals also carry an `"example"` matching the source value
+    # (feature 021) so doc viewers and SDK generators surface concrete samples.
     #
     # UNRESOLVED is checked first because the sentinel is itself a Symbol and
     # must NOT be typed as a string. (Symbol *literals* in source are evaluated
@@ -177,18 +179,23 @@ module RailsOpenapiGenerator
       return {} if value == UNRESOLVED
 
       case value
-      when ::String    then { "type" => "string" }
-      when ::Integer   then { "type" => "integer" }
-      when ::Float     then { "type" => "number" }
-      when true, false then { "type" => "boolean" }
+      when ::String    then { "type" => "string",  "example" => value }
+      when ::Integer   then { "type" => "integer", "example" => value }
+      when ::Float     then { "type" => "number",  "example" => value }
+      when true, false then { "type" => "boolean", "example" => value }
       when ::Array     then array_schema(value)
       when ::Hash      then hash_schema(value)
       else {} # nil, or any value whose type is not known
       end
     end
 
+    # A non-empty array also carries an array-level `example` showing the
+    # whole list; the items schema retains the example from its first
+    # element (via recursion through {.schema_for}).
     def array_schema(value)
-      { "type" => "array", "items" => value.empty? ? {} : schema_for(value.first) }
+      schema = { "type" => "array", "items" => value.empty? ? {} : schema_for(value.first) }
+      schema["example"] = value unless value.empty?
+      schema
     end
 
     def hash_schema(value)

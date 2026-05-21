@@ -21,7 +21,7 @@ RSpec.describe "Helper argument propagation (feature 018)", :rails_app do
       schema = responses_for("/api/binding_helpers/create", "post")["422"]["content"]["application/json"]["schema"]
       expect(schema["properties"]).to include("response", "status_code")
       # status_code was 422 literal at the call site → typed in the helper render's hash.
-      expect(schema["properties"]["status_code"]).to eq("type" => "integer")
+      expect(schema["properties"]["status_code"]).to eq("type" => "integer", "example" => 422)
     end
 
     it "preserves the happy-path entry from render_success" do
@@ -46,7 +46,7 @@ RSpec.describe "Helper argument propagation (feature 018)", :rails_app do
 
     it "carries the literal kwarg hash as the body schema" do
       schema = responses_for("/api/binding_helpers/kwargs", "get")["202"]["content"]["application/json"]["schema"]
-      expect(schema["properties"]["ok"]).to eq("type" => "boolean")
+      expect(schema["properties"]["ok"]).to eq("type" => "boolean", "example" => true)
     end
   end
 

@@ -15,9 +15,9 @@ RSpec.describe RailsOpenapiGenerator::RenderExtractor do
 
     expect(result.renders_json).to be(true)
     expect(result.schema["type"]).to eq("object")
-    expect(result.schema["properties"]["id"]).to eq("type" => "integer")
-    expect(result.schema["properties"]["name"]).to eq("type" => "string")
-    expect(result.schema["properties"]["active"]).to eq("type" => "boolean")
+    expect(result.schema["properties"]["id"]).to eq("type" => "integer", "example" => 1)
+    expect(result.schema["properties"]["name"]).to eq("type" => "string", "example" => "x")
+    expect(result.schema["properties"]["active"]).to eq("type" => "boolean", "example" => true)
   end
 
   it "skips an error-status render and picks the happy-path render json:" do

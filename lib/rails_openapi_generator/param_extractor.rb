@@ -23,6 +23,12 @@ module RailsOpenapiGenerator
   class ParamExtractor
     DEFAULT_MAX_DEPTH = 5
 
+    # rails-param's symbol-form type shorthands (e.g. `:boolean`), mapped
+    # to the canonical class name SchemaMapper indexes by (feature 023).
+    SYMBOL_TYPE_ALIASES = {
+      "boolean" => "Boolean"
+    }.freeze
+
     def initialize(max_depth: DEFAULT_MAX_DEPTH)
       @max_depth = max_depth
     end
@@ -102,7 +108,7 @@ module RailsOpenapiGenerator
           options   = evaluated.is_a?(Hash) ? evaluated : {}
           resolved  = false unless evaluated.is_a?(Hash) && !options.value?(LiteralEvaluator::UNRESOLVED)
         elsif type.nil?
-          type = const_value(arg)
+          type = const_value(arg) || symbol_type_value(arg)
           resolved = false if type.nil?
         end
       end
@@ -238,6 +244,16 @@ module RailsOpenapiGenerator
       when :const_path_ref  then const_value(node[2])
       when :@const          then node[1]
       end
+    end
+
+    # Resolves a symbol-form type shorthand (`:boolean`) to its canonical
+    # class name (`"Boolean"`). Returns nil for an unrecognized symbol so
+    # the caller treats the type as unresolved.
+    def symbol_type_value(node)
+      value = LiteralEvaluator.evaluate(node)
+      return nil unless value.is_a?(String)
+
+      SYMBOL_TYPE_ALIASES[value]
     end
   end
 end

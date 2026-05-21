@@ -56,10 +56,10 @@ RSpec.describe RailsOpenapiGenerator::LiteralEvaluator do
   end
 
   describe ".schema_for" do
-    it "types literal values precisely" do
-      expect(described_class.schema_for("x")).to eq("type" => "string")
-      expect(described_class.schema_for(7)).to eq("type" => "integer")
-      expect(described_class.schema_for(true)).to eq("type" => "boolean")
+    it "types literal values precisely and carries the literal as an example (feature 021)" do
+      expect(described_class.schema_for("x")).to eq("type" => "string", "example" => "x")
+      expect(described_class.schema_for(7)).to eq("type" => "integer", "example" => 7)
+      expect(described_class.schema_for(true)).to eq("type" => "boolean", "example" => true)
     end
 
     it "uses a permissive {} schema for UNRESOLVED and nil" do
@@ -69,7 +69,23 @@ RSpec.describe RailsOpenapiGenerator::LiteralEvaluator do
 
     it "uses permissive {} for unresolved leaves nested in a hash" do
       schema = described_class.schema_for(id: 1, name: described_class::UNRESOLVED)
-      expect(schema["properties"]).to eq("id" => { "type" => "integer" }, "name" => {})
+      expect(schema["properties"]).to eq(
+        "id" => { "type" => "integer", "example" => 1 }, "name" => {}
+      )
+    end
+
+    it "carries an array-level example with items recursed (feature 021)" do
+      schema = described_class.schema_for(%w[a b c])
+      expect(schema).to eq(
+        "type" => "array",
+        "items" => { "type" => "string", "example" => "a" },
+        "example" => %w[a b c]
+      )
+    end
+
+    it "omits the example for an empty literal array" do
+      schema = described_class.schema_for([])
+      expect(schema).to eq("type" => "array", "items" => {})
     end
   end
 

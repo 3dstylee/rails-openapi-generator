@@ -149,6 +149,18 @@ RSpec.describe "Deterministic output", :rails_app do
     FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
   end
 
+  it "produces stable sidecar-overridden responses across runs (feature 020)" do
+    bodies = Array.new(2) do
+      config = RailsOpenapiGenerator::Configuration.new
+      config.output_path = File.expand_path("../../tmp/spec/det_sidecars.json", __dir__)
+      RailsOpenapiGenerator::Generator.new(config).document["paths"]["/api/sidecars/with_partial"]["get"]["responses"]
+    end
+
+    expect(bodies[0]).to eq(bodies[1])
+  ensure
+    FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
+  end
+
   it "produces stable helper-binding propagation across runs (feature 018)" do
     operations = Array.new(2) do
       config = RailsOpenapiGenerator::Configuration.new

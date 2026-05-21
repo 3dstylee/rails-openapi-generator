@@ -22,6 +22,14 @@ RSpec.describe RailsOpenapiGenerator::ParamExtractor do
     expect(call).to be_fully_resolved
   end
 
+  it "recognizes the `:boolean` symbol shorthand as a type (feature 023)" do
+    call = extract("param! :downloadable, :boolean, required: true").first
+    expect(call.name).to eq("downloadable")
+    expect(call.type).to eq("Boolean")
+    expect(call.required).to be(true)
+    expect(call).to be_fully_resolved
+  end
+
   it "reads the required: option" do
     call = extract("param! :id, Integer, required: true").first
     expect(call.required).to be(true)

@@ -14,8 +14,9 @@ module RailsOpenapiGenerator
       merge! key_format! ignore_nil! deep_format_keys! cache! cache_root! cache_if! nil! null!
     ].freeze
 
-    def initialize(views_root: nil)
+    def initialize(views_root: nil, sidecar_loader: nil)
       @views_root = views_root
+      @sidecar_loader = sidecar_loader
       @cache = {}
     end
 
@@ -29,10 +30,18 @@ module RailsOpenapiGenerator
     def schema_for_file(file_path, seen)
       return permissive_object if file_path.nil? || !File.file?(file_path) || seen.include?(file_path)
 
-      @cache[file_path] ||= begin
-        sexp = Ripper.sexp(File.read(file_path))
-        sexp ? build_schema(statements(sexp), seen + [file_path]) : permissive_object
-      end
+      @cache[file_path] ||= compute_schema_for_file(file_path, seen)
+    end
+
+    # A sidecar at the template's sibling path takes precedence over the
+    # parser's inference (feature 020). Bypasses the cycle guard — a
+    # sidecar is a leaf, not a recursive template.
+    def compute_schema_for_file(file_path, seen)
+      sidecar = @sidecar_loader&.for_jbuilder(file_path)
+      return sidecar if sidecar
+
+      sexp = Ripper.sexp(File.read(file_path))
+      sexp ? build_schema(statements(sexp), seen + [file_path]) : permissive_object
     end
 
     def statements(sexp)
@@ -246,7 +255,7 @@ module RailsOpenapiGenerator
     # Resolves the partial named in a json.partial!/json.array! call to a schema.
     def partial_schema(call, seen)
       name = partial_name(call[:args])
-      file = resolve_partial(name)
+      file = resolve_partial(name, seen.last)
       file ? schema_for_file(file, seen) : nil
     end
 
@@ -259,13 +268,25 @@ module RailsOpenapiGenerator
       nil
     end
 
-    def resolve_partial(name)
+    # Resolves a partial name to an absolute file path. A bare name like
+    # `"real_estate_image"` follows Rails' relative-partial convention — it's
+    # looked up first in the caller's directory, then under `views_root`
+    # (feature 022). A slash-qualified name (`"api/users/user"`) is resolved
+    # only against `views_root`, preserving existing behavior.
+    def resolve_partial(name, caller_path = nil)
       return nil if @views_root.nil? || !name.is_a?(String)
 
       dir  = File.dirname(name)
       base = "_#{File.basename(name)}#{EXTENSION}"
-      relative = dir == "." ? base : File.join(dir, base)
-      File.join(@views_root, relative)
+
+      if dir == "."
+        caller_local = caller_path && File.join(File.dirname(caller_path), base)
+        return caller_local if caller_local && File.file?(caller_local)
+
+        File.join(@views_root, base)
+      else
+        File.join(@views_root, dir, base)
+      end
     end
 
     def value_schema(arg)
