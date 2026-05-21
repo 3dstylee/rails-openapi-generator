@@ -71,4 +71,132 @@ RSpec.describe "Feature 001 output is unchanged by response bodies", :rails_app 
     # The default empty exclude_source_paths leaves every controller documented.
     expect(document["paths"]).to have_key("/api/posts")
   end
+
+  it "leaves JSON endpoint status, body, and tags unchanged when redirect detection is added (FR-010)" do
+    # Redirect detection MUST NOT change the documented response of an action
+    # that already classifies as JSON / file_download / html_page / head.
+    body = index.dig("responses", "200", "content", "application/json", "schema")
+    expect(body["type"]).to eq("array")
+    expect(index["tags"]).to eq(["Api::UsersController"])
+    expect(index).not_to have_key("x-redirects")
+  end
+
+  it "leaves a single-render JSON endpoint byte-identical when multi-status detection is added (SC-005)" do
+    # api/users#index has exactly one happy render (via jbuilder view) and no
+    # error renders or guard helpers. Multi-status detection MUST emit the
+    # same single-entry response under '200' with the array schema, and not
+    # spuriously add a second entry.
+    responses = index["responses"]
+    expect(responses.keys).to eq(["200"])
+    expect(responses["200"]["content"]["application/json"]["schema"]["type"]).to eq("array")
+  end
+
+  it "leaves a redirect endpoint byte-identical when multi-status detection is added (FR-010)" do
+    # /api/redirects/create stays a single-entry 302 — multi-status applies
+    # only to JSON-shaped operations. Even if before_action contributes JSON
+    # entries, the redirect kind wins and no extra entries leak in.
+    redirect = document["paths"]["/api/redirects/create"]["post"]["responses"]
+    expect(redirect.keys).to eq(["302"])
+    expect(redirect["302"]).not_to have_key("content")
+  end
+
+  it "leaves a single-render jbuilder endpoint byte-identical under feature 011 (SC-004)" do
+    # api/users#index has exactly one happy render via its jbuilder view
+    # (no helper renders, no before_action renders). Feature 011's
+    # template-site detection must not add a second entry or change the
+    # body schema for it.
+    responses = index["responses"]
+    expect(responses.keys).to eq(["200"])
+    body = responses["200"]["content"]["application/json"]["schema"]
+    expect(body["type"]).to eq("array")
+  end
+
+  it "leaves a single-render HTML-page endpoint byte-identical under feature 011 (SC-004)" do
+    # api/pages#show is a pure HTML page (action body has no render; the
+    # view is resolved by classification). Feature 011 must keep it as a
+    # single-entry :html_page response with text/html content.
+    op = document["paths"]["/api/pages/{id}"]["get"]
+    expect(op["x-renders-html"]).to be(true)
+    content = op["responses"].values.first["content"]
+    expect(content.keys).to eq(["text/html"])
+  end
+
+  it "leaves non-respond_to JSON endpoints byte-identical under feature 012 (SC-004)" do
+    # An action without a respond_to block must NOT gain a multi-content-
+    # type entry. The entry stays single-content (application/json only),
+    # so the documented `content` map has exactly one key.
+    content = index["responses"]["200"]["content"]
+    expect(content.keys).to eq(["application/json"])
+  end
+
+  it "leaves param!-using endpoints byte-identical under feature 013 (SC-004)" do
+    # api/users#index uses `param! :query, String, blank: false` and
+    # `param! :per_page, Integer, in: 1..100` — both literal arguments.
+    # Feature 013's constant resolver MUST NOT change these schemas.
+    per_page = index["parameters"].find { |param| param["name"] == "per_page" }
+    expect(per_page["schema"]).to include("type" => "integer", "minimum" => 1, "maximum" => 100)
+  end
+
+  it "leaves flat param! endpoints byte-identical under feature 008 (SC-005)" do
+    # No nested `param!` blocks in api/users#index, so its parameter
+    # schemas must not gain spurious `nested` / `properties` keys.
+    per_page = index["parameters"].find { |param| param["name"] == "per_page" }
+    expect(per_page["schema"]).not_to have_key("properties")
+    expect(per_page["schema"]).not_to have_key("items")
+  end
+
+  it "leaves operations without parameter-dependent helper renders byte-identical under feature 018 (SC-003)" do
+    # api/users#index and api/users#show have no receiverless helper
+    # calls. Feature 018's argument propagation must not change their
+    # response schemas — the walker simply finds no helpers to expand.
+    list = index["responses"]["200"]["content"]["application/json"]["schema"]
+    expect(list["type"]).to eq("array")
+
+    show = document["paths"]["/api/users/{id}"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+    expect(show["properties"]).to include("id", "role")
+  end
+
+  it "leaves jbuilder-backed and inline-render endpoints byte-identical under feature 017 (SC-002)" do
+    # Feature 017's new branch fires only when render_result.render_sites is
+    # empty. api/users#index (jbuilder view) and api/users#post (inline
+    # `render json:`) both contribute render sites — their responses must
+    # match 0.16.0 exactly.
+    list = index["responses"]["200"]["content"]["application/json"]["schema"]
+    expect(list["type"]).to eq("array")
+
+    post = document["paths"]["/api/users"]["post"]["responses"]["201"]["content"]["application/json"]["schema"]
+    expect(post["properties"]).to include("id", "role", "active")
+  end
+
+  it "leaves jbuilder-backed endpoints byte-identical under feature 016 (SC-004)" do
+    # api/users#index and api/users#show don't use `json.<key> @c, partial:`
+    # or `case`/`when`. Their response schemas must match 0.15.0 exactly —
+    # feature 016's new walker paths fire only on the new AST shapes.
+    list = index["responses"]["200"]["content"]["application/json"]["schema"]
+    expect(list).to eq(
+      "type" => "array",
+      "items" => {
+        "type" => "object",
+        "properties" => {
+          "id" => {},
+          "name" => {},
+          "email" => {},
+          "role" => { "type" => "string" },
+          "profile" => { "type" => "object", "properties" => { "bio" => {} } }
+        }
+      }
+    )
+
+    show = document["paths"]["/api/users/{id}"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+    expect(show).to eq(
+      "type" => "object",
+      "properties" => {
+        "id" => {},
+        "name" => {},
+        "email" => {},
+        "role" => { "type" => "string" },
+        "profile" => { "type" => "object", "properties" => { "bio" => {} } }
+      }
+    )
+  end
 end

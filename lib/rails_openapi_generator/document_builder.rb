@@ -110,22 +110,41 @@ module RailsOpenapiGenerator
     end
 
     # Builds the OpenAPI `responses` object from the endpoint's success response.
+    # Iterates `response.entries` so a multi-status JSON operation emits one
+    # key per entry, ascending by numeric status.
     def responses(response)
-      entry = { "description" => response.description }
-      content = response_content(response)
-      entry["content"] = content if content
-      { response.status.to_s => entry }
+      response.entries.each_with_object({}) do |entry, map|
+        out = { "description" => response.description }
+        content = entry_content(response, entry)
+        out["content"] = content if content
+        map[entry.status.to_s] = out
+      end
     end
 
-    # The response content type and schema, by response kind.
-    def response_content(response)
+    # The response content type and schema for one entry, by response kind.
+    # A `:redirect` response has no body, so no content entry is emitted.
+    # When the entry carries a `content_types` map (feature 012 — a
+    # `respond_to` block with multiple format gates), emit one OpenAPI
+    # content entry per content type, sorted alphabetically.
+    def entry_content(response, entry)
+      return content_types_map(entry.content_types) if entry.content_types
+
       case response.kind
       when :html_page
         { "text/html" => { "schema" => { "type" => "string" } } }
       when :file_download
         { "application/octet-stream" => { "schema" => { "type" => "string", "format" => "binary" } } }
+      when :redirect
+        nil
       else
-        response.body ? { "application/json" => { "schema" => response.body } } : nil
+        entry.body ? { "application/json" => { "schema" => entry.body } } : nil
+      end
+    end
+
+    def content_types_map(content_types)
+      content_types.sort.to_h do |content_type, body|
+        schema = body || { "type" => "string" }
+        [content_type, { "schema" => schema }]
       end
     end
 

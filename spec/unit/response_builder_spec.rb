@@ -7,11 +7,32 @@ RSpec.describe RailsOpenapiGenerator::ResponseBuilder do
     RailsOpenapiGenerator::Route.new(http_method: method, path: "/x", controller: "x", action: "y")
   end
 
-  def make_render_result(schema: nil, renders_json: false, explicit_status: nil, head: false)
+  def make_render_result(schema: nil, renders_json: false, explicit_status: nil, head: false,
+                         redirect_status: nil, render_sites: nil)
+    sites = render_sites || derive_sites(schema, renders_json, explicit_status, head)
     RailsOpenapiGenerator::RenderResult.new(
       schema: schema, renders_json: renders_json, explicit_status: explicit_status, head: head,
-      file_download: false, html_inline: false, template: nil
+      file_download: false, html_inline: false, template: nil, redirect_status: redirect_status,
+      render_sites: sites
     )
+  end
+
+  # Reconstructs the {RenderSite}s the {RenderExtractor} would have produced
+  # so unit specs that pre-date feature 010 keep working without restating
+  # every render site by hand.
+  def derive_sites(schema, renders_json, explicit_status, head)
+    sites = []
+    if renders_json
+      sites << RailsOpenapiGenerator::RenderSite.new(
+        explicit_status: explicit_status, schema: schema, head: false, source: :action
+      )
+    end
+    if head
+      sites << RailsOpenapiGenerator::RenderSite.new(
+        explicit_status: explicit_status || 200, schema: nil, head: true, source: :action
+      )
+    end
+    sites
   end
 
   def classification(kind, render_result: make_render_result, template_name: nil)
@@ -42,9 +63,13 @@ RSpec.describe RailsOpenapiGenerator::ResponseBuilder do
       expect(response).to be_undeterminable
     end
 
-    it "is undeterminable for an :undeterminable classification" do
+    it "is NOT undeterminable for an :undeterminable classification with no signals (feature 015)" do
+      # Feature 015 narrows the undeterminable predicate: a classification
+      # of :undeterminable with no render sites and no extras now emits a
+      # plain body-less response, not an undeterminable one. The warning
+      # gate (Response#undeterminable?) is the user-facing effect.
       response = builder.build(route("GET"), classification: classification(:undeterminable), view_schema: nil)
-      expect(response).to be_undeterminable
+      expect(response).not_to be_undeterminable
     end
   end
 
@@ -102,6 +127,155 @@ RSpec.describe RailsOpenapiGenerator::ResponseBuilder do
       result = make_render_result(schema: render_schema, renders_json: true, explicit_status: 201)
       response = builder.build(route("PATCH"), classification: classification(:json, render_result: result))
       expect(response.status).to eq(201)
+    end
+  end
+
+  describe "multi-content-type entries (feature 012)" do
+    def gate_site(content_type, schema: nil, explicit_status: nil)
+      RailsOpenapiGenerator::RenderSite.new(
+        explicit_status: explicit_status, schema: schema, head: false, source: :action,
+        content_type: content_type
+      )
+    end
+
+    it "builds an entry with content_types when two distinct content types share a status" do
+      result = make_render_result(render_sites: [
+                                    gate_site("application/json", schema: render_schema),
+                                    gate_site("text/html")
+                                  ])
+      response = builder.build(route("GET"), classification: classification(:undeterminable, render_result: result))
+
+      entry = response.entries.first
+      expect(entry.content_types).to be_a(Hash)
+      expect(entry.content_types.keys).to contain_exactly("application/json", "text/html")
+      expect(entry.content_types["application/json"]).to eq(render_schema)
+      expect(entry.content_types["text/html"]).to be_nil
+    end
+
+    it "leaves content_types nil when only one content type contributes at the status" do
+      result = make_render_result(render_sites: [gate_site("application/json", schema: render_schema)])
+      response = builder.build(route("GET"), classification: classification(:undeterminable, render_result: result))
+
+      entry = response.entries.first
+      expect(entry.content_types).to be_nil
+      expect(entry.body).to eq(render_schema)
+    end
+
+    it "groups distinct statuses with their own entries" do
+      err_schema = { "type" => "object", "properties" => { "err" => {} } }
+      sites = [
+        gate_site("application/json", schema: render_schema, explicit_status: 200),
+        gate_site("application/json", schema: err_schema, explicit_status: 422),
+        gate_site("text/html", explicit_status: 200)
+      ]
+      result = make_render_result(render_sites: sites)
+      response = builder.build(route("GET"), classification: classification(:undeterminable, render_result: result))
+
+      statuses = response.entries.map(&:status)
+      expect(statuses).to eq([200, 422])
+      happy = response.entries.find { |entry| entry.status == 200 }
+      expect(happy.content_types.keys).to contain_exactly("application/json", "text/html")
+    end
+  end
+
+  describe "redirect responses" do
+    it "uses redirect_status as the status and emits no body" do
+      result = make_render_result(redirect_status: 302)
+      response = builder.build(route("POST"), classification: classification(:redirect, render_result: result))
+      expect(response.status).to eq(302)
+      expect(response.body).to be_nil
+      expect(response.kind).to eq(:redirect)
+    end
+
+    it "is not undeterminable" do
+      result = make_render_result(redirect_status: 302)
+      response = builder.build(route("POST"), classification: classification(:redirect, render_result: result))
+      expect(response).not_to be_undeterminable
+    end
+
+    it "honors an explicit 3xx status" do
+      result = make_render_result(redirect_status: 303)
+      response = builder.build(route("POST"), classification: classification(:redirect, render_result: result))
+      expect(response.status).to eq(303)
+    end
+
+    it "ignores the HTTP-method convention for a redirect" do
+      result = make_render_result(redirect_status: 302)
+      get = builder.build(route("GET"), classification: classification(:redirect, render_result: result))
+      expect(get.status).to eq(302) # not 200
+    end
+  end
+
+  describe "implicit 200 with error extras (feature 017)" do
+    def extra_site(status)
+      schema = { "type" => "object", "properties" => { "error" => { "type" => "string" } } }
+      RailsOpenapiGenerator::RenderSite.new(
+        explicit_status: status, schema: schema, head: false, source: :rescue_from
+      )
+    end
+
+    it "adds a body-less convention-status entry when the action has no render sites" do
+      result = make_render_result(render_sites: [])
+      response = builder.build(
+        route("GET"),
+        classification: classification(:undeterminable, render_result: result),
+        view_schema: nil,
+        extra_sites: [extra_site(404)]
+      )
+
+      statuses = response.entries.map(&:status)
+      expect(statuses).to contain_exactly(200, 404)
+      happy = response.entries.find { |entry| entry.status == 200 }
+      expect(happy.body).to be_nil
+    end
+
+    it "honors the explicit status when the action sets one but contributes no body" do
+      # An action with `head :no_content` contributes a render site, so the
+      # new branch must NOT fire. A 204 entry plus the rescue's 404 — no
+      # spurious 200.
+      result = make_render_result(explicit_status: 204, head: true)
+      response = builder.build(
+        route("GET"),
+        classification: classification(:undeterminable, render_result: result),
+        view_schema: nil,
+        extra_sites: [extra_site(404)]
+      )
+
+      expect(response.entries.map(&:status)).to contain_exactly(204, 404)
+    end
+
+    it "does not duplicate an existing convention-status entry contributed by extras" do
+      result = make_render_result(render_sites: [])
+      response = builder.build(
+        route("GET"),
+        classification: classification(:undeterminable, render_result: result),
+        view_schema: nil,
+        extra_sites: [extra_site(200), extra_site(404)]
+      )
+
+      expect(response.entries.map(&:status)).to contain_exactly(200, 404)
+      # The 200 from the extra (with a schema) is preserved, not overwritten.
+      happy = response.entries.find { |entry| entry.status == 200 }
+      expect(happy.body).to eq(
+        "type" => "object", "properties" => { "error" => { "type" => "string" } }
+      )
+    end
+
+    it "uses 201 for POST and 204 for DELETE conventions" do
+      result = make_render_result(render_sites: [])
+      post = builder.build(
+        route("POST"),
+        classification: classification(:undeterminable, render_result: result),
+        extra_sites: [extra_site(422)]
+      )
+      expect(post.entries.map(&:status)).to contain_exactly(201, 422)
+
+      delete = builder.build(
+        route("DELETE"),
+        classification: classification(:undeterminable, render_result: result),
+        extra_sites: [extra_site(404)]
+      )
+      expect(delete.entries.map(&:status)).to contain_exactly(204, 404)
     end
   end
 

@@ -13,7 +13,7 @@ RSpec.describe RailsOpenapiGenerator::RenderClassifier do
   def render_result(**overrides)
     RailsOpenapiGenerator::RenderResult.new(
       schema: nil, renders_json: false, explicit_status: nil, head: false,
-      file_download: false, html_inline: false, template: nil, **overrides
+      file_download: false, html_inline: false, template: nil, redirect_status: nil, **overrides
     )
   end
 
@@ -50,5 +50,36 @@ RSpec.describe RailsOpenapiGenerator::RenderClassifier do
   it "classifies an action with no render and no view as :undeterminable" do
     classification = classifier.classify(route(controller: "api/posts", action: "index"), render_result)
     expect(classification.kind).to eq(:undeterminable)
+  end
+
+  it "classifies an action whose only signal is a redirect as :redirect" do
+    classification = classifier.classify(route(controller: "api/posts", action: "index"),
+                                         render_result(redirect_status: 302))
+    expect(classification.kind).to eq(:redirect)
+  end
+
+  it "still classifies as :json when a render json: signal is present alongside a redirect" do
+    result = render_result(renders_json: true, redirect_status: 302)
+    classification = classifier.classify(route(controller: "api/users", action: "index"), result)
+    expect(classification.kind).to eq(:json)
+  end
+
+  it "still classifies as :file_download when a download signal is present alongside a redirect" do
+    result = render_result(file_download: true, redirect_status: 302)
+    classification = classifier.classify(route(controller: "api/pages", action: "download"), result)
+    expect(classification.kind).to eq(:file_download)
+  end
+
+  it "still classifies as :html_page when an inline-html signal is present alongside a redirect" do
+    result = render_result(html_inline: true, redirect_status: 302)
+    classification = classifier.classify(route(controller: "api/pages", action: "raw"), result)
+    expect(classification.kind).to eq(:html_page)
+  end
+
+  it "still classifies as :json via a jbuilder view when a redirect is also present" do
+    classification = classifier.classify(route(controller: "api/users", action: "index"),
+                                         render_result(redirect_status: 302))
+    expect(classification.kind).to eq(:json)
+    expect(classification.jbuilder_file).to end_with("index.json.jbuilder")
   end
 end

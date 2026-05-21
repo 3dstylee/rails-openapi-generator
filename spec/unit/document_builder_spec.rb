@@ -79,6 +79,67 @@ RSpec.describe RailsOpenapiGenerator::DocumentBuilder do
     expect(document["paths"]["/users"]["get"]).not_to have_key("tags")
   end
 
+  describe "multi-content-type entries (feature 012)" do
+    let(:multi_entry) do
+      RailsOpenapiGenerator::ResponseEntry.new(
+        status: 200,
+        content_types: {
+          "application/json" => { "type" => "object", "properties" => { "id" => { "type" => "integer" } } },
+          "text/html" => nil
+        }
+      )
+    end
+    let(:response) do
+      RailsOpenapiGenerator::Response.new(entries: [multi_entry], kind: :json)
+    end
+    let(:operation) do
+      described_class.new(configuration).build([
+                                                 endpoint(http_method: "GET", path: "/things", response: response)
+                                               ])["paths"]["/things"]["get"]
+    end
+
+    it "emits one OpenAPI response key whose content map carries every content type" do
+      content = operation["responses"]["200"]["content"]
+      expect(content.keys).to contain_exactly("application/json", "text/html")
+    end
+
+    it "sorts content-type keys alphabetically for determinism" do
+      content = operation["responses"]["200"]["content"]
+      expect(content.keys).to eq(content.keys.sort)
+    end
+
+    it "uses the entry's schema for content types that carry one" do
+      schema = operation["responses"]["200"]["content"]["application/json"]["schema"]
+      expect(schema["properties"]).to have_key("id")
+    end
+
+    it "uses the placeholder {type: string} schema for body-less content types (text/html)" do
+      schema = operation["responses"]["200"]["content"]["text/html"]["schema"]
+      expect(schema).to eq("type" => "string")
+    end
+  end
+
+  describe "redirect responses" do
+    let(:redirect) do
+      endpoint(
+        http_method: "POST", path: "/things",
+        response: RailsOpenapiGenerator::Response.new(status: 302, kind: :redirect)
+      )
+    end
+    let(:operation) { described_class.new(configuration).build([redirect])["paths"]["/things"]["post"] }
+
+    it "emits the response under the redirect status with no content (description only)" do
+      expect(operation["responses"].keys).to eq(["302"])
+      expect(operation["responses"]["302"]).to eq("description" => "Successful response")
+    end
+
+    it "adds no vendor extension for a redirect response" do
+      expect(operation).not_to have_key("x-renders-html")
+      expect(operation).not_to have_key("x-sends-file")
+      expect(operation).not_to have_key("x-redirects")
+    end
+  end
+
   it "renders summary, description, parameters, and requestBody when present" do
     parameter = RailsOpenapiGenerator::Parameter.new(
       name: "id", location: :path, required: true, schema: { "type" => "integer" }

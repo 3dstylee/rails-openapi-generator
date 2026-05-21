@@ -16,11 +16,15 @@ module RailsOpenapiGenerator
 
     # Returns a {ViewMatch} for the action, or nil when no view is found.
     # `template_name` is an explicitly rendered template (from `RenderResult`).
-    def locate_view(route, template_name = nil)
+    # `format_hint` (feature 011) restricts the lookup: `:json` → only
+    # `.json.jbuilder` candidates; `:html` → only `.html.*` candidates; an
+    # Array<Symbol> → try each format in order; nil → today's "prefer JSON"
+    # lookup applies.
+    def locate_view(route, template_name = nil, format_hint: nil)
       return nil if @views_root.nil?
 
       candidate_names(route, template_name).each do |name|
-        match = match_view(name)
+        match = match_view(name, format_hint: format_hint)
         return match if match
       end
       nil
@@ -51,15 +55,30 @@ module RailsOpenapiGenerator
       File.join(route.controller, template_name)
     end
 
-    # Prefers a JSON view over an HTML view for the same logical name.
-    def match_view(name)
-      jbuilder = File.join(@views_root, "#{name}#{JBUILDER_EXTENSION}")
-      return ViewMatch.new(kind: :json, path: jbuilder, name: name) if File.file?(jbuilder)
+    # Returns a {ViewMatch} for `name`, honoring an optional `format_hint`.
+    # When `format_hint` is nil, prefers a JSON view over an HTML view
+    # (today's behavior). When `:json` or `:html`, restricts the lookup to
+    # that format. When an Array, tries each format in order.
+    def match_view(name, format_hint: nil)
+      formats = Array(format_hint).compact
+      formats = %i[json html] if formats.empty?
 
-      html = Dir.glob(File.join(@views_root, "#{name}.html.*")).min
-      return ViewMatch.new(kind: :html, path: html, name: name) if html
-
+      formats.each do |format|
+        match = lookup(name, format)
+        return match if match
+      end
       nil
+    end
+
+    def lookup(name, format)
+      case format
+      when :json
+        path = File.join(@views_root, "#{name}#{JBUILDER_EXTENSION}")
+        ViewMatch.new(kind: :json, path: path, name: name) if File.file?(path)
+      when :html
+        path = Dir.glob(File.join(@views_root, "#{name}.html.*")).min
+        ViewMatch.new(kind: :html, path: path, name: name) if path
+      end
     end
   end
 end

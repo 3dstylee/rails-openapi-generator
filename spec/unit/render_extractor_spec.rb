@@ -104,6 +104,182 @@ RSpec.describe RailsOpenapiGenerator::RenderExtractor do
     end
   end
 
+  describe "template-render sites (feature 011)" do
+    def template_site(source)
+      result = extract(source)
+      result.render_sites.find(&:template?)
+    end
+
+    it "emits a template site for a String positional render" do
+      site = template_site('render "api/users/show"')
+      expect(site).not_to be_nil
+      expect(site.template_name).to eq("api/users/show")
+      expect(site.format_hint).to be_nil
+      expect(site.head?).to be(false)
+    end
+
+    it "emits a template site for a Symbol positional render" do
+      site = template_site("render :edit")
+      expect(site.template_name).to eq("edit")
+    end
+
+    it "emits a template site for render template:" do
+      site = template_site('render template: "api/users/show"')
+      expect(site.template_name).to eq("api/users/show")
+    end
+
+    it "emits a template site for render action:" do
+      site = template_site("render action: :show")
+      expect(site.template_name).to eq("show")
+    end
+
+    it "records a literal :json format hint" do
+      site = template_site('render "api/users/show", formats: :json')
+      expect(site.format_hint).to eq(:json)
+    end
+
+    it "records a literal :html format hint" do
+      site = template_site('render "api/users/show", formats: :html')
+      expect(site.format_hint).to eq(:html)
+    end
+
+    it "records a literal array format hint" do
+      site = template_site('render "api/users/show", formats: [:json, :html]')
+      expect(site.format_hint).to eq(%i[json html])
+    end
+
+    it "ignores a non-literal format hint" do
+      site = template_site('render "api/users/show", formats: dynamic_format')
+      expect(site.format_hint).to be_nil
+    end
+
+    it "uses the explicit status from a template render" do
+      site = template_site('render "api/users/show", status: :created')
+      expect(site.explicit_status).to eq(201)
+    end
+
+    it "does not emit a template site for render json:" do
+      sites = extract("render json: { id: 1 }").render_sites
+      expect(sites.none?(&:template?)).to be(true)
+    end
+
+    it "does not emit a template site for render html:" do
+      sites = extract('render html: "<p>hi</p>".html_safe').render_sites
+      expect(sites.none?(&:template?)).to be(true)
+    end
+  end
+
+  describe "respond_to format gates (feature 012)" do
+    def gates(source)
+      extract(source).render_sites.select(&:content_type)
+    end
+
+    it "emits an application/json gate for `format.json`" do
+      sites = gates("respond_to do |format|; format.json; end")
+      expect(sites.map(&:content_type)).to eq(["application/json"])
+      expect(sites.first.format_hint).to eq(:json)
+      expect(sites.first.template_name).to eq(RailsOpenapiGenerator::RenderExtractor::SENTINEL_DEFAULT_VIEW)
+    end
+
+    it "emits a text/html gate for `format.html`" do
+      sites = gates("respond_to do |format|; format.html; end")
+      expect(sites.map(&:content_type)).to eq(["text/html"])
+      expect(sites.first.format_hint).to eq(:html)
+    end
+
+    it "emits both gates for `format.html { ... }; format.json`" do
+      source = <<~RUBY
+        respond_to do |format|
+          format.html { do_something }
+          format.json
+        end
+      RUBY
+      sites = gates(source)
+      expect(sites.map(&:content_type)).to contain_exactly("application/json", "text/html")
+    end
+
+    it "uses an inline render's schema for `format.json { render json: { id: 1 } }`" do
+      source = "respond_to do |format|; format.json { render json: { id: 1, ok: true } }; end"
+      sites = gates(source)
+      expect(sites.size).to eq(1)
+      expect(sites.first.content_type).to eq("application/json")
+      expect(sites.first.schema["properties"]).to include("id", "ok")
+      expect(sites.first.template_name).to be_nil
+    end
+
+    it "ignores unmapped format symbols (`format.xml`)" do
+      sites = gates("respond_to do |format|; format.xml; end")
+      expect(sites).to be_empty
+    end
+
+    it "captures the block parameter name (not hard-coded to `format`)" do
+      sites = gates("respond_to do |fmt|; fmt.json; fmt.html; end")
+      expect(sites.map(&:content_type)).to contain_exactly("application/json", "text/html")
+    end
+
+    it "does not detect bare `format.json` outside a respond_to block" do
+      sites = gates("format.json")
+      expect(sites).to be_empty
+    end
+
+    it "honors an inline render's explicit status (`render json: ..., status: :unprocessable_entity`)" do
+      source = "respond_to do |format|; format.json { render json: { error: 1 }, status: :unprocessable_entity }; end"
+      sites = gates(source)
+      expect(sites.first.content_type).to eq("application/json")
+      expect(sites.first.explicit_status).to eq(422)
+    end
+  end
+
+  describe "redirect status" do
+    it "is 302 for a bare redirect_to" do
+      expect(extract('redirect_to "/x"').redirect_status).to eq(302)
+    end
+
+    it "honors an explicit :see_other status" do
+      expect(extract('redirect_to "/x", status: :see_other').redirect_status).to eq(303)
+    end
+
+    it "honors an explicit :moved_permanently status" do
+      expect(extract('redirect_to "/x", status: :moved_permanently').redirect_status).to eq(301)
+    end
+
+    it "honors an explicit integer 301 status" do
+      expect(extract('redirect_to "/x", status: 301').redirect_status).to eq(301)
+    end
+
+    it "detects redirect_back" do
+      expect(extract('redirect_back fallback_location: "/x"').redirect_status).to eq(302)
+    end
+
+    it "detects redirect_back_or_to" do
+      expect(extract('redirect_back_or_to "/x"').redirect_status).to eq(302)
+    end
+
+    it "is nil when the status: option resolves to a non-3xx code" do
+      expect(extract('redirect_to "/x", status: :unprocessable_entity').redirect_status).to be_nil
+    end
+
+    it "falls back to 302 when the status: symbol is unknown" do
+      expect(extract('redirect_to "/x", status: :totally_made_up').redirect_status).to eq(302)
+    end
+
+    it "picks the last happy redirect when multiple are present" do
+      result = extract(<<~RUBY)
+        redirect_to "/a"
+        redirect_to "/b", status: :see_other
+      RUBY
+      expect(result.redirect_status).to eq(303)
+    end
+
+    it "is nil when the action has no redirect call" do
+      expect(extract("render json: { id: 1 }").redirect_status).to be_nil
+    end
+
+    it "is nil for an empty action source" do
+      expect(described_class.new.extract(nil).redirect_status).to be_nil
+    end
+  end
+
   describe "non-JSON signals" do
     it "detects a send_file call" do
       expect(extract('send_file "/tmp/report.pdf"').file_download).to be(true)

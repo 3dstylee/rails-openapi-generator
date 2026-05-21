@@ -23,8 +23,19 @@ RSpec.describe "Resilience when a response shape cannot be determined", :rails_a
     expect(document).to be_a_valid_openapi_document
   end
 
-  it "records a warning naming the endpoint with an undeterminable response" do
-    expect(report.warnings.join("\n")).to match(%r{/api/posts: response shape could not be determined})
+  it "does NOT emit a 'response shape could not be determined' warning for a no-signal action (feature 015)" do
+    # An action with no render, no view, no redirect, no respond_to,
+    # and no contributing extras is documented as a body-less response
+    # at the convention status (existing behavior) — but the warning
+    # channel no longer fires, since Rails returns an implicit empty
+    # response for these actions at runtime.
+    expect(report.warnings.join("\n")).not_to match(%r{/api/posts: response shape could not be determined})
+  end
+
+  it "preserves the byte-identical OpenAPI shape for the no-signal endpoint" do
+    responses = document["paths"]["/api/posts"]["get"]["responses"]
+    expect(responses.keys).to eq(["200"])
+    expect(responses["200"]).not_to have_key("content")
   end
 
   it "leaves other endpoints' response bodies unaffected" do

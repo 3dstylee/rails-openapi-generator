@@ -116,6 +116,13 @@ inspection of two sources:
   by Rails view conventions (`app/views/<controller>/<action>.json.jbuilder`).
   `json.array!` becomes an array schema, `json.partial!` is followed, nested
   `json.x do … end` blocks become nested objects.
+  `json.<key> @collection, partial: "name", as: :name` resolves the partial
+  recursively and emits `{type: array, items: <partial schema>}`; without a
+  positional collection arg (`json.user partial: "user"`) the partial schema
+  is inlined directly.
+  Branching templates merge into one schema: `if`/`elsif`/`else` and
+  `case`/`when`/`else` branches all union their properties (every branch
+  contributes; no attempt is made to choose between them).
 - **literal `render json:`** — an inline `render json: { … }` with literal
   values. A literal render takes precedence over a view template.
 
@@ -139,6 +146,117 @@ applies:
 Only happy-path (2xx/3xx) statuses are read; an error-status guard
 (`render status: :unprocessable_entity`) does not affect the documented success
 status.
+
+`rescue_from` declarations on the controller class chain are detected
+and each handler's renders are documented as response entries on every
+action in the controller. An `ApplicationController` declaring
+`rescue_from RecordNotFound, with: :record_not_found` (rendering 404
+with a literal body) adds a `404` entry to every inheriting
+controller's operations. Method-form (`with: :method`) and block-form
+(`rescue_from FooError do |e| ... end`) handlers are both walked.
+Handlers declared in concerns are picked up via the `rescue_handlers`
+chain. Handlers whose method cannot be resolved (defined in a gem,
+for example) are silently skipped. Controllers without any
+`rescue_from` declarations on their entire ancestor chain emit
+byte-identical output to before the feature.
+
+Render sites reached through receiverless helper methods (e.g.
+`render_error(message, 422, :unprocessable_entity)`) are documented by
+walking the helper's body with **argument propagation**: literal
+positional and keyword arguments at the call site are bound to the
+helper's parameters and substituted into the body before render
+extraction. The substitution composes through nested helper calls and
+is bounded by `method_resolution_depth` (default 5). Non-literal
+arguments leave the corresponding parameter unbound — references to
+it in the body still evaluate as permissive. The same propagation
+applies inside `before_action` callbacks and `rescue_from` handlers.
+
+Actions that produce no static response signal — no `render`, no
+`head`, no `redirect_to`, no `respond_to`, no resolvable view, and no
+contributing extras (helpers / `before_action` / `rescue_from`) — are
+documented as a body-less response at the HTTP-method convention
+status (200/201/204). When the action itself has no signal but
+extras (typically `rescue_from`) contribute only error-status entries,
+the convention-status body-less entry is still documented alongside
+those errors — Rails returns an implicit empty response for the happy
+path, so the operation gets both the implicit 200 and the rescue's
+4xx/5xx entries. The
+`"response shape could not be determined"` warning is **not** emitted
+for these actions; Rails returns an implicit empty response at
+runtime, so the documentation matches reality. (Trade-off: serializer-
+based responses (Blueprinter, AMS) also fall through this path and
+no longer fire the warning. Track serializer endpoints by other means
+if you rely on the warning.)
+
+An action whose success path is `redirect_to` (or `redirect_back` /
+`redirect_back_or_to`) is documented as a redirect: the response is filed under
+the call's 3xx status (`302` by default, or the `status:` option — e.g.
+`redirect_to path, status: :see_other` → `303`) with no response body. JSON
+renders, file downloads, inline HTML, and resolvable view templates continue to
+take precedence over a redirect signal.
+
+For JSON operations, **every** `render json:` and `head` call reachable from
+the action is documented — not only the happy path. An action with both a
+happy `render json: ...` and a guard
+`render json: { ... }, status: :unprocessable_entity` produces two response
+entries (e.g. `200` and `422`), each with the schema of the corresponding
+render (or no body when the render's argument is a non-literal). Renders
+reached through helper methods (including methods in concerns mixed into the
+controller) and through `before_action` callbacks contribute to the response
+set the same way. `before_action` filters with a literal `only: [...]` /
+`except: [...]` are honored; non-literal conditionals fall back to "applies
+to every action in this controller". `rescue_from` handlers and statuses
+implied by exception-raising calls (Pundit `authorize`, ActiveRecord
+`find!`) are out of scope.
+
+When two renders share a status with distinct literal shapes, the entry's
+body becomes an OpenAPI `oneOf` of the unique schemas, sorted by canonical
+JSON for determinism.
+
+Template renders — `render "path/to/template"`, `render :symbol`,
+`render template:`, `render action:` — are also collected from helpers and
+`before_action` callbacks. An explicit `formats:` option chooses which view
+to resolve: `formats: :json` looks up `.json.jbuilder`, `formats: :html`
+looks up `.html.*`, and a literal array tries each in order. When the
+option is absent or non-literal, the default "prefer JSON over HTML"
+lookup applies. When the requested view does not exist, the operation gets
+a body-less entry under the status (the status is known, the body is not).
+An action whose only renders are HTML-template renders at a single status
+classifies as an HTML page (single-entry, `text/html`) — even when the
+render lives in a helper.
+
+`respond_to do |format| ... end` blocks are detected too. Each
+`format.json` gate adds an `application/json` content (schema from the
+default `.json.jbuilder` or from an inline render), each `format.html`
+gate adds a `text/html` content (default `.html.*` or inline render).
+When both apply at the same status, the response carries both content
+types under one OpenAPI entry:
+
+```yaml
+'200':
+  description: Successful response
+  content:
+    application/json: { schema: { ... } }
+    text/html:        { schema: { type: string } }
+```
+
+Only `:json` and `:html` format symbols are mapped in v1. `format.xml`,
+`format.csv`, `format.any`, `format.all`, and dynamic dispatch are
+silently ignored.
+
+Constants used as `param!` argument values are resolved at generation
+time. `param! :mood, String, in: Module::CONSTANT` documents the
+parameter's `enum` from the constant's actual value when that value
+is schema-compatible — an Array of primitives, a Range (`minimum`/
+`maximum`), a Regexp (`pattern`), a primitive, or a recursively-
+checked Hash. Lookup uses `Object.const_get(name, true)` with
+autoload, results are cached per generator run, and any lookup
+failure (`NameError`, `LoadError`) is silently treated as
+unresolved — the generator never raises because of this feature.
+Bare (`FOO`), qualified (`A::B::C`), and top-level (`::Foo`)
+constant references are all supported. Constants referenced
+outside `param!` calls (in `render`, `redirect_to`, `respond_to`,
+etc.) are out of scope in v1.
 
 Endpoints whose response shape cannot be determined (non-literal `render json:`,
 serializer-based responses, unlocatable partials) still get a valid success
@@ -223,6 +341,7 @@ render it. A quick option using [Redocly CLI](https://github.com/Redocly/redocly
 that opens directly, no server required:
 
 ```sh
+rake openapi:generate
 npx @redocly/cli build-docs doc/openapi.json -o doc/openapi.html
 open doc/openapi.html
 ```

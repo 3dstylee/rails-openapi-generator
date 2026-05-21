@@ -62,4 +62,142 @@ RSpec.describe RailsOpenapiGenerator::JbuilderParser do
   it "returns a permissive object for an unparseable or missing template" do
     expect(parser.parse("/no/such/file.json.jbuilder")).to eq("type" => "object", "properties" => {})
   end
+
+  describe "json.<key> partial: resolution (feature 016)" do
+    let(:partial_body) do
+      <<~JBUILDER
+        json.id 1
+        json.message "hello"
+      JBUILDER
+    end
+
+    it "resolves the partial and emits an array when given a positional collection arg" do
+      template("activity_logs/_activity_log", partial_body)
+      path = template("activity_logs/index", <<~JBUILDER)
+        json.today_logs @c, partial: "activity_logs/activity_log", as: :activity_log
+      JBUILDER
+      schema = described_class.new(views_root: tmp_root).parse(path)
+
+      expect(schema["properties"]["today_logs"]).to eq(
+        "type" => "array",
+        "items" => {
+          "type" => "object",
+          "properties" => { "id" => { "type" => "integer" }, "message" => { "type" => "string" } }
+        }
+      )
+    end
+
+    it "emits the partial's schema directly when there is no positional arg" do
+      template("users/_user", <<~JBUILDER)
+        json.id 1
+        json.name "n"
+      JBUILDER
+      path = template("users/show", <<~JBUILDER)
+        json.user partial: "users/user"
+      JBUILDER
+      schema = described_class.new(views_root: tmp_root).parse(path)
+
+      expect(schema["properties"]["user"]).to eq(
+        "type" => "object",
+        "properties" => { "id" => { "type" => "integer" }, "name" => { "type" => "string" } }
+      )
+    end
+
+    it "lets the block body win when both partial: and a block are given (FR-004)" do
+      template("activity_logs/_activity_log", partial_body)
+      path = template("activity_logs/block_wins", <<~JBUILDER)
+        json.today_logs @c, partial: "activity_logs/activity_log", as: :activity_log do
+          json.from_block "yes"
+        end
+      JBUILDER
+      schema = described_class.new(views_root: tmp_root).parse(path)
+
+      # The block's body wins — the partial schema must NOT appear.
+      items = schema["properties"]["today_logs"]["items"]
+      expect(items["properties"].keys).to contain_exactly("from_block")
+    end
+
+    it "degrades to a permissive {} when the partial name is non-literal" do
+      path = template("activity_logs/non_literal", <<~JBUILDER)
+        json.today_logs @c, partial: partial_name, as: :activity_log
+      JBUILDER
+      expect { described_class.new(views_root: tmp_root).parse(path) }.not_to raise_error
+      schema = described_class.new(views_root: tmp_root).parse(path)
+      expect(schema["properties"]["today_logs"]).to eq({})
+    end
+  end
+
+  describe "modifier-if / modifier-unless body extraction (feature 019)" do
+    it "includes a json.<key> guarded by modifier-if" do
+      path = template("modifier_if", <<~JBUILDER)
+        json.message @message
+        json.errors @errors if @errors.present?
+      JBUILDER
+      schema = described_class.new(views_root: tmp_root).parse(path)
+      expect(schema["properties"].keys).to contain_exactly("message", "errors")
+    end
+
+    it "includes a json.<key> guarded by modifier-unless" do
+      path = template("modifier_unless", <<~JBUILDER)
+        json.always 1
+        json.optional 2 unless skip?
+      JBUILDER
+      schema = described_class.new(views_root: tmp_root).parse(path)
+      expect(schema["properties"].keys).to contain_exactly("always", "optional")
+    end
+  end
+
+  describe "case/when branch merging (feature 016)" do
+    it "merges every when body and the else body into one schema" do
+      path = template("case_when_else", <<~JBUILDER)
+        case x
+        when 1
+          json.a 1
+        when 2
+          json.b 2
+        else
+          json.c 3
+        end
+      JBUILDER
+      schema = described_class.new(views_root: tmp_root).parse(path)
+      expect(schema["properties"].keys).to contain_exactly("a", "b", "c")
+    end
+
+    it "merges every when body when no else is present" do
+      path = template("case_when_no_else", <<~JBUILDER)
+        case x
+        when 1
+          json.a 1
+        when 2
+          json.b 2
+        end
+      JBUILDER
+      schema = described_class.new(views_root: tmp_root).parse(path)
+      expect(schema["properties"].keys).to contain_exactly("a", "b")
+    end
+
+    it "treats a multi-condition when (when 1, 2) as a single body" do
+      path = template("case_multi_when", <<~JBUILDER)
+        case x
+        when 1, 2
+          json.x 1
+        end
+      JBUILDER
+      schema = described_class.new(views_root: tmp_root).parse(path)
+      expect(schema["properties"].keys).to contain_exactly("x")
+    end
+
+    it "walks a case nested inside an if branch" do
+      path = template("nested_case_in_if", <<~JBUILDER)
+        if cond
+          case y
+          when 1
+            json.inner 1
+          end
+        end
+      JBUILDER
+      schema = described_class.new(views_root: tmp_root).parse(path)
+      expect(schema["properties"].keys).to contain_exactly("inner")
+    end
+  end
 end

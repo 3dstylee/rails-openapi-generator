@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "json"
+
 RSpec.describe "Deterministic output", :rails_app do
   it "produces byte-identical output across runs of unchanged input (SC-008)" do
     paths = Array.new(2) do |index|
@@ -62,6 +64,144 @@ RSpec.describe "Deterministic output", :rails_app do
     end
 
     expect(responses[0]).to eq(responses[1])
+  ensure
+    FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
+  end
+
+  it "produces stable nested param! block output across runs (feature 008)" do
+    operations = Array.new(2) do
+      config = RailsOpenapiGenerator::Configuration.new
+      config.output_path = File.expand_path("../../tmp/spec/det_nested_params.json", __dir__)
+      RailsOpenapiGenerator::Generator.new(config).document["paths"]["/api/nested_params/search"]["post"]
+    end
+
+    expect(operations[0]).to eq(operations[1])
+  ensure
+    FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
+  end
+
+  it "produces a stable resolved-constant enum across runs (feature 013)" do
+    enums = Array.new(2) do
+      config = RailsOpenapiGenerator::Configuration.new
+      config.output_path = File.expand_path("../../tmp/spec/det_constants.json", __dir__)
+      op = RailsOpenapiGenerator::Generator.new(config)
+                                           .document["paths"]["/api/constant_references/execute"]["post"]
+      mood = op.dig("requestBody", "content", "application/json", "schema", "properties", "mood")
+      mood["enum"]
+    end
+
+    expect(enums[0]).to eq(enums[1])
+    expect(enums[0]).to eq(%w[modern classic minimalist scandinavian industrial])
+  ensure
+    FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
+  end
+
+  it "produces a stable multi-content-type response across runs (feature 012)" do
+    contents = Array.new(2) do
+      config = RailsOpenapiGenerator::Configuration.new
+      config.output_path = File.expand_path("../../tmp/spec/det_respond_to.json", __dir__)
+      doc = RailsOpenapiGenerator::Generator.new(config).document
+      doc["paths"]["/api/respond_to/index"]["get"]["responses"]["200"]["content"]
+    end
+
+    expect(contents[0]).to eq(contents[1])
+    expect(contents[0].keys).to eq(contents[0].keys.sort)
+  ensure
+    FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
+  end
+
+  it "produces stable template-render output across runs (feature 011)" do
+    operations = Array.new(2) do
+      config = RailsOpenapiGenerator::Configuration.new
+      config.output_path = File.expand_path("../../tmp/spec/det_template.json", __dir__)
+      RailsOpenapiGenerator::Generator.new(config).document["paths"]["/api/template_renders/update"]["put"]
+    end
+
+    expect(operations[0]).to eq(operations[1])
+  ensure
+    FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
+  end
+
+  it "produces a stable multi-status oneOf list across runs (FR-013)" do
+    schemas = Array.new(2) do
+      config = RailsOpenapiGenerator::Configuration.new
+      config.output_path = File.expand_path("../../tmp/spec/det_multi_status.json", __dir__)
+      doc = RailsOpenapiGenerator::Generator.new(config).document
+      doc["paths"]["/api/multi_status/dup_distinct"]["post"]["responses"]["201"]
+        .dig("content", "application/json", "schema", "oneOf")
+    end
+
+    expect(schemas[0]).to eq(schemas[1])
+    expect(schemas[0]).to eq(schemas[0].sort_by { |s| JSON.generate(s) })
+  ensure
+    FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
+  end
+
+  it "produces a stable redirect response across runs (FR-011)" do
+    responses = Array.new(2) do
+      config = RailsOpenapiGenerator::Configuration.new
+      config.output_path = File.expand_path("../../tmp/spec/det_redirect.json", __dir__)
+      RailsOpenapiGenerator::Generator.new(config).document["paths"]["/api/redirects/create"]["post"]["responses"]
+    end
+
+    expect(responses[0]).to eq(responses[1])
+  ensure
+    FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
+  end
+
+  it "produces stable helper-binding propagation across runs (feature 018)" do
+    operations = Array.new(2) do
+      config = RailsOpenapiGenerator::Configuration.new
+      config.output_path = File.expand_path("../../tmp/spec/det_binding.json", __dir__)
+      RailsOpenapiGenerator::Generator.new(config).document["paths"]["/api/binding_helpers/create"]["post"]["responses"]
+    end
+
+    expect(operations[0]).to eq(operations[1])
+    expect(operations[0].keys).to include("422")
+  ensure
+    FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
+  end
+
+  it "produces a stable implicit-200-with-error-extras response across runs (feature 017)" do
+    responses = Array.new(2) do
+      config = RailsOpenapiGenerator::Configuration.new
+      config.output_path = File.expand_path("../../tmp/spec/det_implicit_200.json", __dir__)
+      RailsOpenapiGenerator::Generator.new(config).document["paths"]["/api/silent_with_rescue"]["get"]["responses"]
+    end
+
+    expect(responses[0]).to eq(responses[1])
+    expect(responses[0].keys).to include("200")
+  ensure
+    FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
+  end
+
+  it "produces stable resolved-partial sibling-key schemas across runs (feature 016)" do
+    bodies = Array.new(2) do
+      config = RailsOpenapiGenerator::Configuration.new
+      config.output_path = File.expand_path("../../tmp/spec/det_partials.json", __dir__)
+      RailsOpenapiGenerator::Generator.new(config)
+                                      .document["paths"]["/api/activity_logs"]["get"]["responses"]["200"]
+                                      .dig("content", "application/json", "schema")
+    end
+
+    expect(bodies[0]).to eq(bodies[1])
+    items = bodies[0]["properties"].values.map { |entry| entry["items"] }
+    expect(items.uniq.size).to eq(1)
+  ensure
+    FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
+  end
+
+  it "produces a stable case/when merge order across runs (feature 016)" do
+    bodies = Array.new(2) do
+      config = RailsOpenapiGenerator::Configuration.new
+      config.output_path = File.expand_path("../../tmp/spec/det_case.json", __dir__)
+      RailsOpenapiGenerator::Generator.new(config)
+                                      .document["paths"]["/api/case_branches/show"]["get"]["responses"]["200"]
+                                      .dig("content", "application/json", "schema", "properties").keys
+    end
+
+    expect(bodies[0]).to eq(bodies[1])
+    expect(bodies[0]).to eq(bodies[0].sort)
   ensure
     FileUtils.rm_rf(File.expand_path("../../tmp/spec", __dir__))
   end

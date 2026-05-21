@@ -32,6 +32,7 @@ module RailsOpenapiGenerator
 
     def setup_pipeline
       views_root = views_root_path
+      LiteralEvaluator.resolver = ConstantResolver.new
       @locator          = SourceLocator.new
       @parser           = YardParser.new
       @param_extractor  = ParamExtractor.new
@@ -43,8 +44,13 @@ module RailsOpenapiGenerator
       @walker           = ControllerMethodWalker.new(
         method_resolver: @method_resolver, max_depth: @configuration.method_resolution_depth
       )
+      @helper_binding_walker = HelperBindingWalker.new(
+        method_resolver: @method_resolver, max_depth: @configuration.method_resolution_depth
+      )
       @wrapper_resolver = WrapperDownloadResolver.new(walker: @walker)
       @implicit_scanner = ImplicitParamScanner.new(walker: @walker)
+      @before_action_resolver = BeforeActionResolver.new(method_resolver: @method_resolver)
+      @rescue_from_resolver   = RescueFromResolver.new(method_resolver: @method_resolver)
       @classifier       = RenderClassifier.new(view_locator: @view_locator, wrapper_resolver: @wrapper_resolver)
       @response_builder = ResponseBuilder.new
       @operation_builder = OperationBuilder.new
@@ -93,19 +99,94 @@ module RailsOpenapiGenerator
     end
 
     def build_response(route, action_source, controller_class)
-      render_result  = @render_extractor.extract(action_source)
+      render_result = @render_extractor.extract(action_source)
+      resolve_template_sites!(render_result.render_sites, route)
       classification = @classifier.classify(
         route, render_result,
         controller_class: controller_class,
         action_node: action_source&.method_node
       )
       view_schema    = classification.jbuilder_file ? @jbuilder_parser.parse(classification.jbuilder_file) : nil
-      response       = @response_builder.build(route, classification: classification, view_schema: view_schema)
+      extra_sites    = collect_extra_sites(route, controller_class, action_source)
+      resolve_template_sites!(extra_sites, route)
+      response = @response_builder.build(
+        route, classification: classification, view_schema: view_schema, extra_sites: extra_sites
+      )
 
       if response.undeterminable?
         @report.warn("#{route.http_method} #{route.path}: response shape could not be determined")
       end
       response
+    end
+
+    # Resolves every unresolved template-render site in `sites` (mutates
+    # each in place): looks up the view via {ViewLocator} with the site's
+    # `format_hint`, then either parses the jbuilder (JSON site with
+    # schema), marks the site as an HTML-template site, or leaves it as a
+    # body-less JSON site (status known, body unknown).
+    def resolve_template_sites!(sites, route)
+      Array(sites).each do |site|
+        next unless site&.template?
+
+        # A `respond_to` format gate without an inline render uses the
+        # sentinel as its template name; expand to the action's default
+        # view path (`<controller>/<action>`) before lookup runs.
+        if site.template_name == RenderExtractor::SENTINEL_DEFAULT_VIEW
+          site.template_name = "#{route.controller}/#{route.action}"
+        end
+
+        view = @view_locator.locate_view(route, site.template_name, format_hint: site.format_hint)
+        case view&.kind
+        when :json
+          site.schema = @jbuilder_parser.parse(view.path)
+        when :html
+          site.kind_hint = :html_page
+        end
+        site.template_name = nil
+        site.format_hint = nil
+      end
+    end
+
+    # Render sites reached through helper methods called from the action,
+    # and through `before_action` callbacks applicable to this action.
+    # JSON-only — non-JSON kinds (redirect / file / html) are unchanged
+    # by feature 010 and ignore extras.
+    def collect_extra_sites(route, controller_class, action_source)
+      action_node = action_source&.method_node
+      return [] if action_node.nil? || controller_class.nil?
+
+      helper_sites = helper_render_sites(controller_class, action_node)
+      callback_sites = before_action_render_sites(controller_class, route.action)
+      rescue_sites = rescue_from_render_sites(controller_class)
+      helper_sites + callback_sites + rescue_sites
+    end
+
+    def rescue_from_render_sites(controller_class)
+      handlers = @rescue_from_resolver.resolve(controller_class)
+      handlers.flat_map { |handler| sites_from_callback(controller_class, handler.method_node, :rescue_from) }
+    end
+
+    def helper_render_sites(controller_class, action_node)
+      # The binding walker excludes the action body itself — that body's
+      # render sites are already collected by RenderExtractor#extract.
+      bodies = @helper_binding_walker.reachable_bodies(controller_class, action_node)
+      bodies.flat_map { |body| @render_extractor.collect_sites(body, source: :helper) }
+    end
+
+    def before_action_render_sites(controller_class, action_name)
+      callbacks = @before_action_resolver.resolve(controller_class)
+      applicable = callbacks.select { |callback| callback.applies_to?(action_name) }
+      applicable.flat_map { |callback| sites_from_callback(controller_class, callback.method_node, :before_action) }
+    end
+
+    # Renders contributed by a Rails-invoked callback (before_action or
+    # rescue_from handler): the callback body itself (no inferred
+    # bindings — Rails calls it) plus every helper it reaches, walked
+    # with argument propagation (feature 018).
+    def sites_from_callback(controller_class, method_node, source)
+      own_sites = @render_extractor.collect_sites(method_node, source: source)
+      helper_bodies = @helper_binding_walker.reachable_bodies(controller_class, method_node)
+      own_sites + helper_bodies.flat_map { |body| @render_extractor.collect_sites(body, source: source) }
     end
 
     def count_kind(response)
