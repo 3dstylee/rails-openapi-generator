@@ -3,6 +3,23 @@
 All notable changes to this gem are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.25.0] - 2026-05-28
+
+### Fixed
+
+- Schema sidecars that use JSON Schema `$defs` with internal
+  `#/$defs/<name>` references now produce a valid OpenAPI document.
+  Previously the sidecar was inlined verbatim deep inside the document,
+  leaving its document-root-relative refs pointing at a `$defs` block
+  that no longer existed at the OpenAPI root — so tools like Redocly
+  failed with `Invalid reference token: $defs`.
+- Each sidecar's `$defs` are now hoisted into `components/schemas` and
+  every `#/$defs/<name>` ref is rewritten to
+  `#/components/schemas/<key>`. Identical definitions from separate
+  sidecars share one component key; a same-named but differently-shaped
+  definition is suffixed (e.g. `transit_item_2`) so distinct types are
+  never merged.
+
 ## [0.24.0] - 2026-05-21
 
 ### Added
