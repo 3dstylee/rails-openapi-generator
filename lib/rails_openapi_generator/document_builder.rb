@@ -21,7 +21,7 @@ module RailsOpenapiGenerator
       tags = tags(endpoints)
       document["tags"] = tags unless tags.empty?
       document["paths"] = paths(endpoints)
-      document
+      SchemaHoister.new.hoist!(document)
     end
 
     private
