@@ -1,0 +1,7 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer" },
+    "source": { "type": "string", "const": "sidecar" }
+  }
+}

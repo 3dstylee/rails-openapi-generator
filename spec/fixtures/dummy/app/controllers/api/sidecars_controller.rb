@@ -24,5 +24,11 @@ module Api
     def malformed
       render json: { ok: true }
     end
+
+    # POST template render with a literal status ternary. The action
+    # sidecar must document 200 and 202, not also the POST default 201.
+    def ternary_status
+      render :ternary_status, status: reused ? :ok : :accepted
+    end
   end
 end

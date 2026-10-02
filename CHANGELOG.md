@@ -18,6 +18,10 @@ All notable changes to this gem are documented here. This project follows
   `render :create, status: :accepted` on a POST now documents 202 only.
   A guard that renders only an error status (4xx/5xx) still gets the
   method default for the implicit view.
+- An action sidecar at the conventional view path no longer adds the
+  HTTP-method default when the action already documents a different 2xx.
+  `render :create, status: result.reused ? :ok : :accepted` on a POST
+  with `create.schema.json` documents 200 and 202, not also 201.
 
 ## [0.25.0] - 2026-05-28
 

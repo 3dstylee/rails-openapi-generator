@@ -49,6 +49,17 @@ RSpec.describe "JSON Schema sidecar files (feature 020)", :rails_app do
       expect(body["properties"]).to include("ok", "ran_at")
       expect(body["properties"]["ran_at"]["format"]).to eq("date-time")
     end
+
+    it "does not add the POST default 201 when a template render uses a status ternary" do
+      responses = document["paths"]["/api/sidecars/ternary_status"]["post"]["responses"]
+
+      expect(responses.keys).to include("200", "202")
+      expect(responses.keys).not_to include("201")
+      %w[200 202].each do |status|
+        properties = responses[status]["content"]["application/json"]["schema"]["properties"]
+        expect(properties["source"]).to eq("type" => "string", "const" => "sidecar")
+      end
+    end
   end
 
   describe "US3: malformed sidecar resilience" do
