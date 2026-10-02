@@ -129,6 +129,12 @@ module RailsOpenapiGenerator
     # overriding what was inferred from a jbuilder template or an inline
     # `render json:` (feature 020 US2). JSON-kind responses only —
     # html_page / file_download / redirect ignore sidecars per FR-007.
+    #
+    # Do not invent that convention status when the action already
+    # documents a different 2xx. A template render such as
+    # `render :create, status: reused ? :ok : :accepted` is 200 and 202;
+    # the sidecar is already the body of those entries via the jbuilder
+    # parser, and POST's default 201 is not returned.
     def apply_action_sidecar!(response, route)
       return unless response.kind == :json
 
@@ -138,6 +144,8 @@ module RailsOpenapiGenerator
       convention = ResponseBuilder::STATUS_BY_METHOD.fetch(route.http_method, ResponseBuilder::DEFAULT_STATUS)
       entry = response.entries.find { |e| e.status == convention }
       if entry.nil?
+        return if other_success_entry?(response, convention)
+
         response.entries << ResponseEntry.new(status: convention, body: schema)
         response.entries.sort_by!(&:status)
       else
@@ -145,6 +153,10 @@ module RailsOpenapiGenerator
         entry.content_types = nil
       end
       response.undeterminable = false
+    end
+
+    def other_success_entry?(response, convention)
+      response.entries.any? { |entry| entry.status != convention && (200..299).cover?(entry.status) }
     end
 
     # Resolves every unresolved template-render site in `sites` (mutates

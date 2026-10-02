@@ -53,6 +53,7 @@ Rails.application.routes.draw do
     get "sidecars/inline_render", to: "sidecars#inline_render"
     get "sidecars/no_view", to: "sidecars#no_view"
     get "sidecars/malformed", to: "sidecars#malformed"
+    post "sidecars/ternary_status", to: "sidecars#ternary_status"
     post "binding_helpers/create", to: "binding_helpers#create"
     get "binding_helpers/chain", to: "binding_helpers#chain"
     get "binding_helpers/kwargs", to: "binding_helpers#kwargs"
