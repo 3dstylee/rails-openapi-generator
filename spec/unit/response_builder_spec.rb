@@ -279,6 +279,104 @@ RSpec.describe RailsOpenapiGenerator::ResponseBuilder do
     end
   end
 
+  describe "view schema with an explicit success status" do
+    def action_site(status, schema: view_schema, source: :action)
+      RailsOpenapiGenerator::RenderSite.new(
+        explicit_status: status, schema: schema, head: false, source: source
+      )
+    end
+
+    it "does not add the POST default 201 when the action renders 202" do
+      result = make_render_result(render_sites: [action_site(202)])
+      response = builder.build(
+        route("POST"),
+        classification: classification(:json, render_result: result),
+        view_schema: view_schema
+      )
+
+      expect(response.entries.map(&:status)).to eq([202])
+      expect(response.entries.first.body).to eq(view_schema)
+    end
+
+    it "does not add the GET default 200 when the action renders 202" do
+      result = make_render_result(render_sites: [action_site(202)])
+      response = builder.build(
+        route("GET"),
+        classification: classification(:json, render_result: result),
+        view_schema: view_schema
+      )
+
+      expect(response.entries.map(&:status)).to eq([202])
+    end
+
+    it "documents each explicit branch of a status ternary and not the POST default" do
+      result = make_render_result(render_sites: [action_site(200), action_site(202)])
+      response = builder.build(
+        route("POST"),
+        classification: classification(:json, render_result: result),
+        view_schema: view_schema
+      )
+
+      expect(response.entries.map(&:status)).to eq([200, 202])
+    end
+
+    it "does not add 201 when a helper renders an explicit 202" do
+      result = make_render_result(render_sites: [])
+      response = builder.build(
+        route("POST"),
+        classification: classification(:json, render_result: result),
+        view_schema: view_schema,
+        extra_sites: [action_site(202, source: :helper)]
+      )
+
+      expect(response.entries.map(&:status)).to eq([202])
+    end
+
+    it "fills a nil body when the explicit status is the method default" do
+      result = make_render_result(render_sites: [action_site(201, schema: nil)])
+      response = builder.build(
+        route("POST"),
+        classification: classification(:json, render_result: result),
+        view_schema: view_schema
+      )
+
+      expect(response.entries.map(&:status)).to eq([201])
+      expect(response.entries.first.body).to eq(view_schema)
+    end
+
+    it "still adds the method default when the action renders only an error" do
+      error_schema = { "type" => "object", "properties" => { "error" => {} } }
+      result = make_render_result(render_sites: [action_site(422, schema: error_schema)])
+      response = builder.build(
+        route("POST"),
+        classification: classification(:json, render_result: result),
+        view_schema: view_schema
+      )
+
+      expect(response.entries.map(&:status)).to eq([201, 422])
+      expect(response.entries.find { |entry| entry.status == 201 }.body).to eq(view_schema)
+    end
+
+    it "still adds the method default when the only extra is a rescue_from error" do
+      result = make_render_result(render_sites: [])
+      extra = RailsOpenapiGenerator::RenderSite.new(
+        explicit_status: 404,
+        schema: { "type" => "object", "properties" => { "error" => {} } },
+        head: false,
+        source: :rescue_from
+      )
+      response = builder.build(
+        route("POST"),
+        classification: classification(:json, render_result: result),
+        view_schema: view_schema,
+        extra_sites: [extra]
+      )
+
+      expect(response.entries.map(&:status)).to eq([201, 404])
+      expect(response.entries.find { |entry| entry.status == 201 }.body).to eq(view_schema)
+    end
+  end
+
   describe "head responses (US2)" do
     it "documents no body for a head response" do
       result = make_render_result(explicit_status: 200, head: true)
