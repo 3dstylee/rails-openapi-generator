@@ -3,7 +3,7 @@
 All notable changes to this gem are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.26.0] - 2026-10-02
 
 ### Fixed
 
