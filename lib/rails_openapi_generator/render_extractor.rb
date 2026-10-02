@@ -358,20 +358,98 @@ module RailsOpenapiGenerator
     end
 
     # Each `render` call → { options: Hash, positionals: [arg nodes], code: }.
+    # A `status:` ternary whose branches are both status literals
+    # (`result.reused ? :ok : :accepted`) becomes one record per branch so
+    # each status is documented. A ternary with a non-literal branch stays
+    # a single record and is dropped later, matching an unmapped `status:`.
     def collect_renders(node)
-      render_calls(node, "render").map do |args|
-        options     = {}
+      render_calls(node, "render").flat_map do |args|
+        options_node = nil
         positionals = []
         args.each do |arg|
           if arg.is_a?(Array) && arg[0] == :bare_assoc_hash
-            evaluated = LiteralEvaluator.evaluate(arg)
-            options = evaluated if evaluated.is_a?(Hash)
+            options_node = arg
           else
             positionals << arg
           end
         end
-        { options: options, positionals: positionals, code: status_code(options[:status]) }
+
+        evaluated = options_node && LiteralEvaluator.evaluate(options_node)
+        options = evaluated.is_a?(Hash) ? evaluated : {}
+        branch_codes = literal_ternary_status_codes(status_value_node(options_node))
+        if branch_codes
+          branch_codes.map { |code| render_record(options.merge(status: code), positionals) }
+        else
+          [render_record(options, positionals)]
+        end
       end
+    end
+
+    def render_record(options, positionals)
+      { options: options, positionals: positionals, code: status_code(options[:status]) }
+    end
+
+    # The AST node of the `status:` value inside a bare options hash, or nil.
+    def status_value_node(options_node)
+      return nil unless options_node.is_a?(Array) && options_node[0] == :bare_assoc_hash
+
+      Array(options_node[1]).filter_map { |assoc| assoc[2] if status_assoc?(assoc) }.last
+    end
+
+    def status_assoc?(assoc)
+      return false unless assoc.is_a?(Array) && assoc[0] == :assoc_new
+
+      key = assoc[1]
+      return false unless key.is_a?(Array)
+
+      case key[0]
+      when :@label
+        key[1].sub(/:\z/, "") == "status"
+      when :symbol_literal, :symbol
+        LiteralEvaluator.evaluate(key) == "status"
+      else
+        false
+      end
+    end
+
+    # Status codes for a ternary (including a nested one) when every leaf
+    # branch is a status literal. Nil when any leaf is not — the caller
+    # then keeps the unresolved `status:` and drops the render.
+    def literal_ternary_status_codes(node)
+      node = unwrap_parens(node)
+      return nil unless node.is_a?(Array) && node[0] == :ifop
+
+      then_codes = status_codes_from_branch(node[2])
+      else_codes = status_codes_from_branch(node[3])
+      return nil if then_codes.nil? || else_codes.nil?
+
+      then_codes + else_codes
+    end
+
+    def status_codes_from_branch(node)
+      node = unwrap_parens(node)
+      return literal_ternary_status_codes(node) if node.is_a?(Array) && node[0] == :ifop
+
+      code = literal_status_code(node)
+      code.nil? ? nil : [code]
+    end
+
+    # A symbol (`:ok`) or integer (`200`) status literal. Nil for anything
+    # else, including an unmapped symbol. Does not treat a missing value as
+    # 200 — that default belongs to {#status_code} for an absent `status:`.
+    def literal_status_code(node)
+      value = LiteralEvaluator.evaluate(unwrap_parens(node))
+      return nil if value.nil? || value == LiteralEvaluator::UNRESOLVED
+
+      case value
+      when Integer then value
+      when String  then STATUS_CODES[value.to_sym]
+      end
+    end
+
+    def unwrap_parens(node)
+      node = node[1][0] while node.is_a?(Array) && node[0] == :paren && node[1].is_a?(Array) && node[1].size == 1
+      node
     end
 
     # The `json:` value of the last `render json:` that is not an error render.

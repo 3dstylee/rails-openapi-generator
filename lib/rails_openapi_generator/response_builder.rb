@@ -82,12 +82,20 @@ module RailsOpenapiGenerator
     # convention status (unless the action body's literal render already
     # provided a body at that status). Inject or upgrade the entry as
     # needed.
+    #
+    # An explicit 2xx other than that convention (`render :create, status:
+    # :accepted` on a POST) is the success response. Adding the method
+    # default as well would document a status the action does not return.
+    # Error-only renders still receive the convention entry, so a guard
+    # `render status: :unprocessable_entity` followed by an implicit view
+    # keeps both.
     def integrate_view_schema(entries, sites, view_schema, route)
       return if view_schema.nil?
 
       convention = STATUS_BY_METHOD.fetch(route.http_method, DEFAULT_STATUS)
       action_renders = sites.select { |site| site.source == :action && !site.head? }
       return if action_renders.any? { |site| resolved_status(site, route) == convention && !site.schema.nil? }
+      return if explicit_non_convention_success?(sites, convention)
 
       entry = entries.find { |e| e.status == convention }
       if entry.nil?
@@ -95,6 +103,21 @@ module RailsOpenapiGenerator
         entries.sort_by!(&:status)
       elsif entry.body.nil? && entry.content_types.nil?
         entry.body = view_schema
+      end
+    end
+
+    # True when the action, or a helper it calls, already names a 2xx
+    # status other than the HTTP-method default. `head` is excluded:
+    # a body-less head does not account for a rendered view. Rescue and
+    # before_action sites are excluded so an error callback cannot hide
+    # the action's own success status.
+    def explicit_non_convention_success?(sites, convention)
+      sites.any? do |site|
+        next false unless %i[action helper].include?(site.source)
+        next false if site.head?
+
+        status = site.explicit_status
+        status && status != convention && (200..299).cover?(status)
       end
     end
 

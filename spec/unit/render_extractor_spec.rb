@@ -98,6 +98,52 @@ RSpec.describe RailsOpenapiGenerator::RenderExtractor do
       expect(extract("head :teapot_party").explicit_status).to be_nil
     end
 
+    it "documents each literal branch of a status: ternary" do
+      result = extract("render json: { id: 1 }, status: result.reused ? :ok : :accepted")
+      sites = result.render_sites
+
+      expect(sites.map(&:explicit_status)).to eq([200, 202])
+      expect(sites.map { |site| site.schema["properties"].keys }).to eq([%w[id], %w[id]])
+      expect(result.explicit_status).to eq(202)
+    end
+
+    it "documents integer branches of a status: ternary" do
+      result = extract("render json: { id: 1 }, status: result.reused ? 200 : 202")
+      expect(result.render_sites.map(&:explicit_status)).to eq([200, 202])
+    end
+
+    it "documents a parenthesized status: ternary" do
+      result = extract("render :create, status: (result.reused ? (:ok) : (:accepted))")
+      expect(result.render_sites.map(&:explicit_status)).to eq([200, 202])
+    end
+
+    it "documents a hash-rocket status: ternary" do
+      result = extract("render :create, :status => result.reused ? :ok : :accepted")
+      expect(result.render_sites.map(&:explicit_status)).to eq([200, 202])
+    end
+
+    it "documents every leaf of a nested status: ternary" do
+      result = extract("render :create, status: a ? :ok : b ? :accepted : :created")
+      expect(result.render_sites.map(&:explicit_status)).to eq([200, 202, 201])
+    end
+
+    it "keeps an error branch next to a success branch" do
+      result = extract("render json: { id: 1 }, status: reused ? :ok : :unprocessable_entity")
+      expect(result.render_sites.map(&:explicit_status)).to eq([200, 422])
+      expect(result.explicit_status).to eq(200)
+    end
+
+    it "drops the render when a ternary branch is not a status literal" do
+      result = extract("render :create, status: flag ? :ok : other")
+      expect(result.render_sites).to be_empty
+      expect(result.explicit_status).to be_nil
+    end
+
+    it "drops the render when a ternary branch is an unknown status symbol" do
+      result = extract("render :create, status: flag ? :ok : :not_a_status")
+      expect(result.render_sites).to be_empty
+    end
+
     it "flags a happy head call" do
       expect(extract("head :ok").head?).to be(true)
       expect(extract("render json: {}").head?).to be(false)
@@ -156,6 +202,15 @@ RSpec.describe RailsOpenapiGenerator::RenderExtractor do
     it "uses the explicit status from a template render" do
       site = template_site('render "api/users/show", status: :created')
       expect(site.explicit_status).to eq(201)
+    end
+
+    it "emits one template site per literal branch of a status: ternary" do
+      result = extract("render :create, status: result.reused ? :ok : :accepted")
+      sites = result.render_sites.select(&:template?)
+
+      expect(sites.map(&:explicit_status)).to eq([200, 202])
+      expect(sites.map(&:template_name)).to eq(%w[create create])
+      expect(result.explicit_status).to eq(202)
     end
 
     it "does not emit a template site for render json:" do

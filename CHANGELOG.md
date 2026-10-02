@@ -3,6 +3,22 @@
 All notable changes to this gem are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.26.0] - 2026-10-02
+
+### Fixed
+
+- A `status:` option written as a ternary whose branches are all status
+  literals (`render :create, status: result.reused ? :ok : :accepted`)
+  now documents each branch (200 and 202). Previously the render was
+  ignored and the HTTP-method default (201 for POST) was emitted instead.
+  A ternary with any non-literal branch is still ignored.
+- When an action or a helper it calls explicitly renders a 2xx status
+  other than the HTTP-method default, and a jbuilder view exists, that
+  default is no longer added alongside the explicit status.
+  `render :create, status: :accepted` on a POST now documents 202 only.
+  A guard that renders only an error status (4xx/5xx) still gets the
+  method default for the implicit view.
+
 ## [0.25.0] - 2026-05-28
 
 ### Fixed
