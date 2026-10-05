@@ -28,6 +28,7 @@ module RailsOpenapiGenerator
       when :@float           then Float(node[1], exception: false) || UNRESOLVED
       when :@tstring_content then node[1] # bare word from a %w[...] array
       when :string_literal   then string_value(node)
+      when :string_concat    then string_concat_value(node)
       when :symbol_literal, :symbol, :dyna_symbol then symbol_value(node)
       when :regexp_literal   then regexp_value(node)
       when :array            then array_value(node[1])
@@ -97,6 +98,15 @@ module RailsOpenapiGenerator
       return UNRESOLVED unless content.is_a?(Array) && content[0] == :string_content
 
       parts = content[1..].map { |part| part.is_a?(Array) && part[0] == :@tstring_content ? part[1] : UNRESOLVED }
+      parts.include?(UNRESOLVED) ? UNRESOLVED : parts.join
+    end
+
+    # Adjacent string literals (`"a" "b"`, or `"a" \` continued onto the
+    # next line) parse as `[:string_concat, left, right]`. Three or more
+    # pieces nest on the left, so evaluating both children joins any
+    # number of them. One interpolated piece leaves the whole UNRESOLVED.
+    def string_concat_value(node)
+      parts = [evaluate(node[1]), evaluate(node[2])]
       parts.include?(UNRESOLVED) ? UNRESOLVED : parts.join
     end
 
