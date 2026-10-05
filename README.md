@@ -105,6 +105,23 @@ end
 
 → Nested `properties` tree with descriptions at every level. `:boolean` symbol shorthand recognized.
 
+### Declared in a helper
+
+```ruby
+def update
+  validate_update_params!
+end
+
+private
+
+def validate_update_params!
+  param! :id,    Integer, required: true
+  param! :title, String
+end
+```
+
+→ Same result as declaring them in the action: `id` is an integer path param and `title` is in the `requestBody`. Receiverless helpers are followed up to `method_resolution_depth` (default 5). If the action and a helper declare the same name, the action's declaration wins. `before_action` callbacks are not followed.
+
 ## Response body — four sources
 
 ### 1. jbuilder template

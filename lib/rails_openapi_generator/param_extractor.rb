@@ -37,7 +37,13 @@ module RailsOpenapiGenerator
     def extract(action_source)
       return [] if action_source.nil? || action_source.method_node.nil?
 
-      find_param_calls(action_source.method_node).map { |found| build_call(found, depth: 0) }
+      extract_from(action_source.method_node)
+    end
+
+    # Returns an Array of {ParamCall} for the `param!` calls in any method
+    # node — an action, or a helper the action calls.
+    def extract_from(node)
+      find_param_calls(node).map { |found| build_call(found, depth: 0) }
     end
 
     private

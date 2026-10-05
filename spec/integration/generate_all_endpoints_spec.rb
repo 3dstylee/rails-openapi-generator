@@ -25,6 +25,8 @@ RSpec.describe "Generate an OpenAPI document for all endpoints", :rails_app do
       "/api/constant_references/execute", "/api/constant_references/missing",
       "/api/constant_references/non_compatible", "/api/constant_references/pattern",
       "/api/constant_references/range",
+      "/api/helper_params/chained/{id}", "/api/helper_params/search",
+      "/api/helper_params/update/{id}",
       "/api/inputs", "/api/inputs/{id}", "/api/inputs/upload",
       "/api/multi_status/destroy/{id}", "/api/multi_status/dup_distinct",
       "/api/multi_status/dup_same", "/api/multi_status/head_and_render",

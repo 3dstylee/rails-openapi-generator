@@ -3,6 +3,19 @@
 All notable changes to this gem are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- `param!` calls in a helper method the action calls are now documented.
+  An action that delegates to `validate_update_params!` previously got
+  no request body, and its `:id` path param fell back to `string`
+  because the `param! :id, Integer` declaration was never seen. Helpers
+  are followed through the same walker as implicit `params[...]` reads,
+  up to `method_resolution_depth`. When the action and a helper declare
+  the same name, the action's declaration wins. `before_action`
+  callbacks are still not followed.
+
 ## [0.26.0] - 2026-10-02
 
 ### Fixed
