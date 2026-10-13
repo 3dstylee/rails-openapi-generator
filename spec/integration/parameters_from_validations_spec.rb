@@ -62,6 +62,13 @@ RSpec.describe "Request parameters from rails_param validations", :rails_app do
       expect(schema["properties"]["name"]).to include("description" => "Display name. 1–100 chars.")
       expect(schema["properties"]["email"]).not_to have_key("description")
     end
+
+    it "joins a :description split across lines with a trailing backslash" do
+      # api/users#create declares :role's description as two string literals.
+      schema = document["paths"]["/api/users"]["post"]["requestBody"]["content"]["application/json"]["schema"]
+
+      expect(schema["properties"]["role"]).to include("description" => "Account role. Admins can manage other users.")
+    end
   end
 
   it "still produces an operation for an action with no param! calls" do

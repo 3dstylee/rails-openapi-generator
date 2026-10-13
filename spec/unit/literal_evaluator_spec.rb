@@ -22,6 +22,23 @@ RSpec.describe RailsOpenapiGenerator::LiteralEvaluator do
     expect(evaluate(":active")).to eq("active")
   end
 
+  it "joins adjacent string literals, including ones continued with a trailing backslash" do
+    expect(evaluate('"a" "b"')).to eq("ab")
+    # A single-quoted heredoc keeps the trailing backslashes in the source.
+    expect(evaluate(<<~'RUBY')).to eq("a b c")
+      "a " \
+        "b " \
+        "c"
+    RUBY
+  end
+
+  it "returns UNRESOLVED when a joined piece interpolates" do
+    expect(evaluate(<<~'RUBY')).to eq(described_class::UNRESOLVED)
+      "a #{b} " \
+        "c"
+    RUBY
+  end
+
   it "evaluates true, false, and nil" do
     expect(evaluate("true")).to be(true)
     expect(evaluate("false")).to be(false)

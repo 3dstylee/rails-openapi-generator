@@ -17,7 +17,10 @@ module Api
     def create
       param! :name, String, required: true, description: "Display name. 1–100 chars."
       param! :email, String, required: true, format: /.+@.+/
-      param! :role, String, in: %w[admin member]
+      # Split with a trailing backslash on purpose: covers adjacent string literals.
+      param! :role, String, in: %w[admin member],
+                            description: "Account role. Admins can manage " \
+                                         "other users."
       return render status: :unprocessable_entity, json: { error: "invalid" } unless params[:name]
 
       render json: { id: 1, role: "member", active: true }

@@ -3,6 +3,19 @@
 All notable changes to this gem are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- A string split across lines with a trailing backslash
+  (`description: "Account role. Admins can manage " \` with
+  `"other users."` on the next line) is now joined into one value.
+  Previously Ripper's `:string_concat` node fell through to unresolved,
+  so a `param!` `description:` written this way was dropped from the
+  document. Adjacent literals on one line (`"a" "b"`) are joined the
+  same way, wherever literal values are read. A piece that interpolates
+  still leaves the whole value unresolved.
+
 ## [0.26.0] - 2026-10-02
 
 ### Fixed
