@@ -79,7 +79,7 @@ module RailsOpenapiGenerator
       action_source    = file && @parser.parse(file)[route.action]
       action_node      = action_source&.method_node
       controller_class = @locator.controller_class(route)
-      param_calls      = @param_extractor.extract(action_source)
+      param_calls      = extract_param_calls(controller_class, action_node)
       warn_unresolved(route, param_calls)
 
       response = build_response(route, action_source, controller_class)
@@ -98,6 +98,17 @@ module RailsOpenapiGenerator
       @report.warn("#{route.http_method} #{route.path}: #{e.message}")
       @report.processed_count += 1
       @operation_builder.build(route)
+    end
+
+    # `param!` calls from the action body and from every receiverless helper
+    # it reaches, up to `method_resolution_depth`. The walker yields the
+    # action body first, so when the action and a helper declare the same
+    # name, the action's declaration wins. `before_action` callbacks are not
+    # followed.
+    def extract_param_calls(controller_class, action_node)
+      bodies = @walker.reachable_bodies(controller_class, action_node)
+      calls = bodies.flat_map { |body| @param_extractor.extract_from(body) }
+      calls.uniq { |call| call.name || call.object_id }
     end
 
     def build_response(route, action_source, controller_class)

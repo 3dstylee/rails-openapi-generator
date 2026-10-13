@@ -7,6 +7,14 @@ All notable changes to this gem are documented here. This project follows
 
 ### Fixed
 
+- `param!` calls in a helper method the action calls are now documented.
+  An action that delegates to `validate_update_params!` previously got
+  no request body, and its `:id` path param fell back to `string`
+  because the `param! :id, Integer` declaration was never seen. Helpers
+  are followed through the same walker as implicit `params[...]` reads,
+  up to `method_resolution_depth`. When the action and a helper declare
+  the same name, the action's declaration wins. `before_action`
+  callbacks are still not followed.
 - A string split across lines with a trailing backslash
   (`description: "Account role. Admins can manage " \` with
   `"other users."` on the next line) is now joined into one value.
