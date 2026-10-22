@@ -152,8 +152,28 @@ module RailsOpenapiGenerator
 
       case type
       when "Hash"  then nested_calls
-      when "Array" then nested_calls.last
+      when "Array" then array_items_call(nested_calls)
       end
+    end
+
+    # rails_param yields each Hash element of an Array to the block as that
+    # element's own evaluator, so `item.param! :key, Type` calls declare the
+    # element's properties. Index-style calls (`array.param! i, Type`) have no
+    # name and declare the element itself, so the last one stays the items shape.
+    # When a block mixes both, the named fields win and index-style calls are
+    # dropped: an index-style Hash element fails at runtime anyway.
+    def array_items_call(nested_calls)
+      properties = nested_calls.select(&:name)
+      return nested_calls.last if properties.empty?
+
+      ParamCall.new(
+        name: nil,
+        type: "Hash",
+        required: false,
+        constraints: {},
+        fully_resolved: properties.all?(&:fully_resolved?),
+        nested: properties
+      )
     end
 
     # Captures the block's parameter names from the

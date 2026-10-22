@@ -30,6 +30,16 @@ module Api
       head :ok
     end
 
+    # POST — US2 scenario 2: Array of objects. rails_param yields each Hash
+    # element to the block, so named calls declare the element's properties.
+    def line_items
+      param! :line_items, Array, required: true do |item|
+        item.param! :kind, String, required: true, in: %w[a b]
+        item.param! :quantity, Integer
+      end
+      head :ok
+    end
+
     # POST — US3: Three-level deep nesting.
     def nested
       param! :wrapper, Hash do |w|

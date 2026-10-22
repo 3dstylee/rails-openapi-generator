@@ -93,6 +93,44 @@ RSpec.describe RailsOpenapiGenerator::ParamExtractor do
       expect(call.nested.name).to be_nil
     end
 
+    it "extracts an Array of objects from named calls on the element block var" do
+      call = extract(<<~RUBY).first
+        param! :items, Array do |item|
+          item.param! :kind, String, required: true
+          item.param! :is_express, :boolean
+        end
+      RUBY
+      expect(call.type).to eq("Array")
+      expect(call.nested.name).to be_nil
+      expect(call.nested.type).to eq("Hash")
+      expect(call.nested.nested.map(&:name)).to eq(%w[kind is_express])
+      expect(call.nested.nested.map(&:type)).to eq(%w[String Boolean])
+      expect(call.nested.nested.first.required).to be(true)
+    end
+
+    it "keeps the index-style Hash item declaration as the items shape" do
+      call = extract(<<~RUBY).first
+        param! :items, Array do |a, i|
+          a.param! i, Hash do |h|
+            h.param! :kind, String
+          end
+        end
+      RUBY
+      expect(call.nested.type).to eq("Hash")
+      expect(call.nested.nested.map(&:name)).to eq(%w[kind])
+    end
+
+    it "prefers named fields over index-style calls in the same Array block" do
+      call = extract(<<~RUBY).first
+        param! :items, Array do |a, i|
+          a.param! :kind, String
+          a.param! i, Integer
+        end
+      RUBY
+      expect(call.nested.type).to eq("Hash")
+      expect(call.nested.nested.map(&:name)).to eq(%w[kind])
+    end
+
     it "carries constraints down to nested ParamCalls" do
       call = extract(<<~RUBY).first
         param! :q, Hash do |q|

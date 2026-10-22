@@ -42,6 +42,7 @@ Rails.application.routes.draw do
     get "constant_references/missing", to: "constant_references#missing"
     post "nested_params/search", to: "nested_params#search"
     post "nested_params/tags", to: "nested_params#tags"
+    post "nested_params/line_items", to: "nested_params#line_items"
     post "nested_params/moods", to: "nested_params#moods"
     post "nested_params/nested", to: "nested_params#nested"
     post "nested_params/empty_block", to: "nested_params#empty_block"
