@@ -31,7 +31,7 @@ RSpec.describe "Generate an OpenAPI document for all endpoints", :rails_app do
       "/api/multi_status/destroy/{id}", "/api/multi_status/dup_distinct",
       "/api/multi_status/dup_same", "/api/multi_status/head_and_render",
       "/api/multi_status/show/{id}", "/api/multi_status/update",
-      "/api/nested_params/empty_block", "/api/nested_params/moods",
+      "/api/nested_params/empty_block", "/api/nested_params/line_items", "/api/nested_params/moods",
       "/api/nested_params/nested", "/api/nested_params/non_hash_block",
       "/api/nested_params/search", "/api/nested_params/tags",
       "/api/orphan", "/api/pages/{id}", "/api/pages/{id}/download",

@@ -3,6 +3,21 @@
 All notable changes to this gem are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- An `Array` `param!` whose block declares named fields on the element
+  (`param! :items, Array do |item|; item.param! :kind, String; end`) is
+  now documented as an array of objects with those fields. rails_param
+  yields each Hash element to the block as its own evaluator, so this is
+  how an array of objects is validated (and how the nested-params guide
+  documents it). Previously only the last nested call was kept as the
+  items shape, so the array came out as an array of that field's type
+  (e.g. `items: { type: boolean }`). Index-style declarations
+  (`array.param! i, Type`) are unchanged. Nested `required` arrays are
+  still not emitted, for these items as for nested Hash params.
+
 ## [0.27.0] - 2026-10-13
 
 ### Fixed

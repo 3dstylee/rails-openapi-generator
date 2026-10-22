@@ -47,6 +47,21 @@ RSpec.describe "Nested param! blocks", :rails_app do
     end
   end
 
+  describe "Array of objects declared on the element block var (US2 scenario 2)" do
+    let(:line_items) { request_body("/api/nested_params/line_items")["properties"]["line_items"] }
+
+    it "documents the items as objects with the declared properties" do
+      expect(line_items["type"]).to eq("array")
+      expect(line_items["items"]["type"]).to eq("object")
+      expect(line_items["items"]["properties"].keys).to eq(%w[kind quantity])
+    end
+
+    it "carries types and constraints to the item properties" do
+      expect(line_items["items"]["properties"]["kind"]).to include("type" => "string", "enum" => %w[a b])
+      expect(line_items["items"]["properties"]["quantity"]["type"]).to eq("integer")
+    end
+  end
+
   describe "Array of String items with constant `in:` (the user's reported case)" do
     let(:moods) { request_body("/api/nested_params/moods")["properties"]["moods"] }
     let(:resolved_moods) { %w[modern classic minimalist scandinavian industrial] }
